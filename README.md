@@ -52,6 +52,28 @@ export REVIEW_UPLOAD_DIR=/영속_볼륨/tripplan/reviews
 4. 에뮬레이터에서는 Backend 주소가 기본값 `http://10.0.2.2:8080/`입니다.
 5. 실제 폰에서는 `BuildConfig.API_BASE_URL`을 PC의 같은 Wi-Fi IP 또는 운영 API 주소로 변경합니다.
 
+## Railway 배포
+
+백엔드는 `backend/Dockerfile`로 컨테이너 빌드할 수 있습니다.
+
+1. Railway 프로젝트에서 이 GitHub 저장소를 연결합니다.
+2. 백엔드 서비스의 Root Directory를 `/backend`로 지정합니다.
+3. 같은 프로젝트에 PostgreSQL 서비스를 추가합니다.
+4. 백엔드 서비스에 아래 변수를 설정합니다.
+
+```text
+DB_URL=jdbc:postgresql://${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+DB_USERNAME=${{Postgres.PGUSER}}
+DB_PASSWORD=${{Postgres.PGPASSWORD}}
+JWT_SECRET=32바이트 이상의 운영용 랜덤 문자열
+REVIEW_UPLOAD_DIR=/data/reviews
+```
+
+5. 백엔드 서비스에 Volume을 추가하고 Mount Path를 `/data`로 지정합니다.
+6. Networking에서 Railway HTTPS 도메인을 생성합니다.
+
+Railway가 제공하는 `PORT` 환경변수는 Spring Boot가 자동으로 사용합니다. Push를 실제 전송하기 전까지 `FCM_ENABLED`는 `false`로 둡니다.
+
 ## MVP 전제
 
 - 비밀번호는 BCrypt로 저장하고 API 인증은 Bearer JWT를 사용합니다.

@@ -29,5 +29,6 @@ tripplan:
     fcm-enabled: ${FCM_ENABLED:false}
 
 server:
+  port: ${PORT:8080}
   error:
     include-message: always

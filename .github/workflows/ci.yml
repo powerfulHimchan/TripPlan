@@ -26,6 +26,13 @@ jobs:
         working-directory: backend
         run: gradle test --stacktrace
 
+  backend-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend Docker image
+        run: docker build --tag tripplan-backend:test ./backend
+
   android-build:
     runs-on: ubuntu-latest
     steps:
@@ -44,4 +51,3 @@ jobs:
         with:
           name: tripplan-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
