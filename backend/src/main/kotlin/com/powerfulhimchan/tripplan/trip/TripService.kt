@@ -3,7 +3,6 @@ package com.powerfulhimchan.tripplan.trip
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 
@@ -24,19 +23,19 @@ class TripService(
 
     @Transactional(readOnly = true)
     fun list(userId: String): List<TripResponse> =
-        trips.findAllByUserIdOrderByStartDateDesc(userId).map { trip ->
+        trips.findAllAccessible(userId).map { trip ->
             trip.toResponse(items.findAllByTripIdOrderByScheduledAt(trip.id))
         }
 
     @Transactional(readOnly = true)
     fun get(userId: String, tripId: UUID): TripResponse {
-        val trip = ownedTrip(userId, tripId)
+        val trip = accessibleTrip(userId, tripId)
         return trip.toResponse(items.findAllByTripIdOrderByScheduledAt(tripId))
     }
 
     @Transactional
     fun addItem(userId: String, tripId: UUID, request: CreateItineraryItemRequest): ItineraryItemResponse {
-        val trip = ownedTrip(userId, tripId)
+        val trip = accessibleTrip(userId, tripId)
         val localDate = request.scheduledAt.atZone(ZoneId.of(trip.timezone)).toLocalDate()
         require(!localDate.isBefore(trip.startDate) && !localDate.isAfter(trip.endDate)) { "일정 시각은 여행 기간 안이어야 합니다." }
         return items.save(ItineraryItem(
@@ -53,7 +52,7 @@ class TripService(
     @Transactional
     fun updateNotification(userId: String, itemId: UUID, request: UpdateNotificationRequest): ItineraryItemResponse {
         val item = items.findById(itemId).orElseThrow { EntityNotFoundException("일정을 찾을 수 없습니다.") }
-        ownedTrip(userId, item.tripId)
+        accessibleTrip(userId, item.tripId)
         item.notificationEnabled = request.enabled
         item.notificationMinutesBefore = request.minutesBefore
         item.notificationSentAt = null
@@ -63,12 +62,12 @@ class TripService(
     @Transactional
     fun deleteItem(userId: String, itemId: UUID) {
         val item = items.findById(itemId).orElseThrow { EntityNotFoundException("일정을 찾을 수 없습니다.") }
-        ownedTrip(userId, item.tripId)
+        accessibleTrip(userId, item.tripId)
         items.delete(item)
     }
 
-    private fun ownedTrip(userId: String, tripId: UUID): Trip =
-        trips.findByIdAndUserId(tripId, userId) ?: throw EntityNotFoundException("여행을 찾을 수 없습니다.")
+    private fun accessibleTrip(userId: String, tripId: UUID): Trip =
+        trips.findAccessible(tripId, userId) ?: throw EntityNotFoundException("여행을 찾을 수 없습니다.")
 
     private fun Trip.toResponse(items: List<ItineraryItem>) = TripResponse(
         id, title, destination, startDate, endDate, timezone, items.map { it.toResponse() }
@@ -78,4 +77,3 @@ class TripService(
         id, title, place, memo, scheduledAt, notificationEnabled, notificationMinutesBefore
     )
 }
-

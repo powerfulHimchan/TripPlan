@@ -16,10 +16,12 @@ spring:
     enabled: true
 
 tripplan:
+  auth:
+    jwt-secret: ${JWT_SECRET:tripplan-local-development-secret-key-change-me}
+    token-valid-days: ${JWT_VALID_DAYS:30}
   notification:
     fcm-enabled: ${FCM_ENABLED:false}
 
 server:
   error:
     include-message: always
-

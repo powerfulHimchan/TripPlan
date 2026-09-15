@@ -2,6 +2,8 @@ package com.powerfulhimchan.tripplan.trip
 
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
 
@@ -10,28 +12,27 @@ import java.util.UUID
 class TripController(private val service: TripService) {
     @PostMapping("/trips")
     @ResponseStatus(HttpStatus.CREATED)
-    fun create(@RequestHeader("X-User-Id") userId: String, @Valid @RequestBody request: CreateTripRequest) =
-        service.create(userId, request)
+    fun create(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateTripRequest) =
+        service.create(jwt.subject, request)
 
     @GetMapping("/trips")
-    fun list(@RequestHeader("X-User-Id") userId: String) = service.list(userId)
+    fun list(@AuthenticationPrincipal jwt: Jwt) = service.list(jwt.subject)
 
     @GetMapping("/trips/{tripId}")
-    fun get(@RequestHeader("X-User-Id") userId: String, @PathVariable tripId: UUID) = service.get(userId, tripId)
+    fun get(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) = service.get(jwt.subject, tripId)
 
     @PostMapping("/trips/{tripId}/items")
     @ResponseStatus(HttpStatus.CREATED)
-    fun addItem(@RequestHeader("X-User-Id") userId: String, @PathVariable tripId: UUID,
-                @Valid @RequestBody request: CreateItineraryItemRequest) = service.addItem(userId, tripId, request)
+    fun addItem(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID,
+                @Valid @RequestBody request: CreateItineraryItemRequest) = service.addItem(jwt.subject, tripId, request)
 
     @PatchMapping("/items/{itemId}/notification")
-    fun updateNotification(@RequestHeader("X-User-Id") userId: String, @PathVariable itemId: UUID,
+    fun updateNotification(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID,
                            @Valid @RequestBody request: UpdateNotificationRequest) =
-        service.updateNotification(userId, itemId, request)
+        service.updateNotification(jwt.subject, itemId, request)
 
     @DeleteMapping("/items/{itemId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun deleteItem(@RequestHeader("X-User-Id") userId: String, @PathVariable itemId: UUID) =
-        service.deleteItem(userId, itemId)
+    fun deleteItem(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID) =
+        service.deleteItem(jwt.subject, itemId)
 }
-

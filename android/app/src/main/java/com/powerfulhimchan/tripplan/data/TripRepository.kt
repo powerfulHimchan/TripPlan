@@ -9,24 +9,41 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-class TripRepository {
+class TripRepository(private val tokenStore: TokenStore) {
     private val api: TripApi = Retrofit.Builder()
         .baseUrl(BuildConfig.API_BASE_URL)
-        .client(OkHttpClient.Builder().addInterceptor(HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
-        }).build())
+        .client(OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder().apply {
+                    tokenStore.accessToken?.let { header("Authorization", "Bearer $it") }
+                }.build()
+                chain.proceed(request)
+            }
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+            }).build())
         .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().add(KotlinJsonAdapterFactory()).build()))
         .build().create(TripApi::class.java)
 
-    private val userId = "demo-user"
+    val isLoggedIn get() = tokenStore.isLoggedIn
+    val email get() = tokenStore.email
 
-    suspend fun trips() = api.getTrips(userId)
-    suspend fun createTrip(request: CreateTripRequest) = api.createTrip(userId, request)
-    suspend fun addItem(tripId: String, request: CreateItemRequest) = api.addItem(userId, tripId, request)
+    suspend fun register(email: String, password: String) = api.register(EmailPasswordRequest(email, password)).also(tokenStore::save)
+    suspend fun login(email: String, password: String) = api.login(EmailPasswordRequest(email, password)).also(tokenStore::save)
+    fun logout() = tokenStore.clear()
+
+    suspend fun trips() = api.getTrips()
+    suspend fun createTrip(request: CreateTripRequest) = api.createTrip(request)
+    suspend fun addItem(tripId: String, request: CreateItemRequest) = api.addItem(tripId, request)
     suspend fun setNotification(item: ItineraryItem, enabled: Boolean) =
-        api.updateNotification(userId, item.id, UpdateNotificationRequest(enabled, item.notificationMinutesBefore))
-    suspend fun registerDevice(token: String) = api.registerDevice(userId, RegisterDeviceRequest(token))
-    suspend fun getReview(itemId: String) = api.getReview(userId, itemId)
+        api.updateNotification(item.id, UpdateNotificationRequest(enabled, item.notificationMinutesBefore))
+    suspend fun registerDevice(token: String) = api.registerDevice(RegisterDeviceRequest(token))
+    suspend fun getReview(itemId: String) = api.getReview(itemId)
     suspend fun saveReview(itemId: String, rating: Int, content: String) =
-        api.saveReview(userId, itemId, SaveReviewRequest(rating, content))
+        api.saveReview(itemId, SaveReviewRequest(rating, content))
+    suspend fun invite(tripId: String, email: String) = api.invite(tripId, InviteRequest(email))
+    suspend fun invitations() = api.getInvitations()
+    suspend fun acceptInvitation(id: String) = api.acceptInvitation(id)
+    suspend fun declineInvitation(id: String) = api.declineInvitation(id)
+    suspend fun members(tripId: String) = api.getMembers(tripId)
 }

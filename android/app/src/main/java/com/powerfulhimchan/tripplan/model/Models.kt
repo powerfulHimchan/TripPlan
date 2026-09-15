@@ -41,3 +41,17 @@ data class UpdateNotificationRequest(val enabled: Boolean, val minutesBefore: In
 data class RegisterDeviceRequest(val token: String)
 data class SaveReviewRequest(val rating: Int, val content: String)
 data class Review(val id: String, val itemId: String, val rating: Int, val content: String, val updatedAt: String)
+
+data class EmailPasswordRequest(val email: String, val password: String)
+data class AuthResponse(val accessToken: String, val userId: String, val email: String)
+data class InviteRequest(val email: String)
+data class Invitation(
+    val id: String,
+    val tripId: String,
+    val tripTitle: String,
+    val inviterEmail: String,
+    val inviteeEmail: String,
+    val status: String,
+    val createdAt: String,
+)
+data class TripMember(val userId: String, val email: String, val owner: Boolean)

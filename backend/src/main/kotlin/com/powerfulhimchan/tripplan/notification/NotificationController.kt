@@ -1,6 +1,8 @@
 package com.powerfulhimchan.tripplan.notification
 
 import org.springframework.http.HttpStatus
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -8,7 +10,6 @@ import org.springframework.web.bind.annotation.*
 class NotificationController(private val service: NotificationService) {
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun register(@RequestHeader("X-User-Id") userId: String, @RequestBody request: RegisterDeviceRequest) =
-        service.register(userId, request.token)
+    fun register(@AuthenticationPrincipal jwt: Jwt, @RequestBody request: RegisterDeviceRequest) =
+        service.register(jwt.subject, request.token)
 }
-

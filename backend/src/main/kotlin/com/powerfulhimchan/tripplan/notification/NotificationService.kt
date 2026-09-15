@@ -2,6 +2,7 @@ package com.powerfulhimchan.tripplan.notification
 
 import com.powerfulhimchan.tripplan.trip.ItineraryItemRepository
 import com.powerfulhimchan.tripplan.trip.TripRepository
+import com.powerfulhimchan.tripplan.sharing.TripMemberRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -13,6 +14,7 @@ class NotificationService(
     private val items: ItineraryItemRepository,
     private val trips: TripRepository,
     private val tokens: DeviceTokenRepository,
+    private val members: TripMemberRepository,
     private val sender: PushSender,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -30,7 +32,8 @@ class NotificationService(
         items.findPotentiallyDue(now.plusSeconds(7 * 24 * 3600)).forEach { item ->
             if (item.notificationDueAt().isAfter(now)) return@forEach
             val trip = trips.findById(item.tripId).orElse(null) ?: return@forEach
-            val userTokens = tokens.findAllByUserId(trip.userId)
+            val participantIds = listOf(trip.userId) + members.findAllByTripId(trip.id).map { it.userId }
+            val userTokens = participantIds.flatMap(tokens::findAllByUserId)
             if (userTokens.isEmpty()) return@forEach
             val body = item.place?.let { "${item.title} · $it" } ?: item.title
             val success = userTokens.any { device ->
@@ -43,4 +46,3 @@ class NotificationService(
         }
     }
 }
-

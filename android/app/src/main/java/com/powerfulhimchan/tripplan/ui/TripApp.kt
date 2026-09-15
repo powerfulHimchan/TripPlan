@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.powerfulhimchan.tripplan.model.*
 import java.time.LocalDate
@@ -24,22 +25,77 @@ fun TripApp(viewModel: TripViewModel) {
     val state by viewModel.state.collectAsState()
     MaterialTheme(colorScheme = lightColorScheme(primary = Teal, surface = Color(0xFFF8FAF9))) {
         Surface(Modifier.fillMaxSize()) {
-            if (state.selected == null) {
-                TripListScreen(state, viewModel::select, viewModel::createTrip)
-            } else {
-                TripDetailScreen(state, { viewModel.select(null) }, viewModel::addItem,
-                    viewModel::toggleNotification, viewModel::saveReview)
+            when {
+                !state.authenticated -> AuthScreen(state.loading, viewModel::login, viewModel::register)
+                state.selected == null -> TripListScreen(
+                    state, viewModel::select, viewModel::createTrip, viewModel::logout,
+                    viewModel::acceptInvitation, viewModel::declineInvitation,
+                )
+                else -> TripDetailScreen(
+                    state, { viewModel.select(null) }, viewModel::addItem,
+                    viewModel::toggleNotification, viewModel::saveReview, viewModel::invite,
+                )
             }
+            if (state.loading) LoadingOverlay()
             state.error?.let { ErrorSnackbar(it) }
         }
     }
 }
 
 @Composable
-private fun TripListScreen(state: TripUiState, onSelect: (Trip) -> Unit, onCreate: (CreateTripRequest) -> Unit) {
+private fun AuthScreen(
+    loading: Boolean,
+    onLogin: (String, String) -> Unit,
+    onRegister: (String, String) -> Unit,
+) {
+    var registerMode by remember { mutableStateOf(false) }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
+        Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("TripPlan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Teal)
+                Text(if (registerMode) "이메일로 회원가입" else "이메일로 로그인", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(email, { email = it }, label = { Text("이메일 주소") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    password, { password = it }, label = { Text("비밀번호 (8자 이상)") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                Button(
+                    onClick = { if (registerMode) onRegister(email, password) else onLogin(email, password) },
+                    enabled = !loading && email.isNotBlank() && password.length >= 8,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (registerMode) "가입하기" else "로그인") }
+                TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(if (registerMode) "이미 회원인가요? 로그인" else "처음인가요? 회원가입")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripListScreen(
+    state: TripUiState,
+    onSelect: (Trip) -> Unit,
+    onCreate: (CreateTripRequest) -> Unit,
+    onLogout: () -> Unit,
+    onAccept: (String) -> Unit,
+    onDecline: (String) -> Unit,
+) {
     var showCreate by remember { mutableStateOf(false) }
+    var showInvitations by remember { mutableStateOf(false) }
     Scaffold(
-        topBar = { TopAppBar(title = { Text("TripPlan", fontWeight = FontWeight.Bold) }) },
+        topBar = {
+            TopAppBar(
+                title = { Column { Text("TripPlan", fontWeight = FontWeight.Bold); Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall) } },
+                actions = {
+                    TextButton(onClick = { showInvitations = true }) { Text("받은 초대 ${state.invitations.size}") }
+                    TextButton(onClick = onLogout) { Text("로그아웃") }
+                },
+            )
+        },
         floatingActionButton = { FloatingActionButton(onClick = { showCreate = true }) { Text("＋") } }
     ) { padding ->
         if (state.trips.isEmpty() && !state.loading) {
@@ -65,6 +121,38 @@ private fun TripListScreen(state: TripUiState, onSelect: (Trip) -> Unit, onCreat
         }
     }
     if (showCreate) CreateTripDialog({ showCreate = false }) { onCreate(it); showCreate = false }
+    if (showInvitations) InvitationDialog(state.invitations, { showInvitations = false }, onAccept, onDecline)
+}
+
+@Composable
+private fun InvitationDialog(
+    invitations: List<Invitation>,
+    onDismiss: () -> Unit,
+    onAccept: (String) -> Unit,
+    onDecline: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("받은 여행 초대") },
+        text = {
+            if (invitations.isEmpty()) Text("대기 중인 초대가 없습니다.")
+            else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                invitations.forEach { invitation ->
+                    Card {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(invitation.tripTitle, fontWeight = FontWeight.Bold)
+                            Text("${invitation.inviterEmail} 님의 초대", style = MaterialTheme.typography.bodySmall)
+                            Row {
+                                TextButton(onClick = { onDecline(invitation.id) }) { Text("거절") }
+                                Button(onClick = { onAccept(invitation.id) }) { Text("수락") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
 }
 
 @Composable
@@ -74,12 +162,21 @@ private fun TripDetailScreen(
     onAddItem: (CreateItemRequest) -> Unit,
     onToggle: (ItineraryItem, Boolean) -> Unit,
     onSaveReview: (String, Int, String) -> Unit,
+    onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
     val tripFinished = !LocalDate.now().isBefore(LocalDate.parse(trip.endDate))
+    val canInvite = state.members.any { it.owner && it.email == state.email }
     var showItem by remember { mutableStateOf(false) }
+    var showSharing by remember { mutableStateOf(false) }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(trip.title) }, navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록") } }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(trip.title) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록") } },
+                actions = { TextButton(onClick = { showSharing = true }) { Text("공유 ${state.members.size}") } },
+            )
+        },
         floatingActionButton = { FloatingActionButton(onClick = { showItem = true }) { Text("＋ 일정") } }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,17 +191,41 @@ private fun TripDetailScreen(
             if (trip.items.isEmpty()) item { Text("등록된 일정이 없습니다.", modifier = Modifier.padding(12.dp), color = Color.Gray) }
             items(trip.items, key = { it.id }) { item ->
                 ItineraryCard(
-                    item = item,
-                    onToggle = onToggle,
-                    reviewEnabled = tripFinished,
-                    review = state.reviews[item.id],
-                    onSaveReview = { rating, content -> onSaveReview(item.id, rating, content) },
+                    item, onToggle, tripFinished, state.reviews[item.id],
+                    { rating, content -> onSaveReview(item.id, rating, content) },
                 )
             }
             item { Spacer(Modifier.height(72.dp)) }
         }
     }
     if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
+    if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
+        onInvite(it)
+        showSharing = false
+    }
+}
+
+@Composable
+private fun SharingDialog(members: List<TripMember>, canInvite: Boolean, onDismiss: () -> Unit, onInvite: (String) -> Unit) {
+    var email by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("함께 계획하는 사람") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                members.forEach { member -> Text("${if (member.owner) "소유자" else "참여자"} · ${member.email}") }
+                if (canInvite) {
+                    HorizontalDivider()
+                    OutlinedTextField(email, { email = it }, label = { Text("가입된 회원 이메일") }, singleLine = true)
+                }
+            }
+        },
+        confirmButton = {
+            if (canInvite) Button(onClick = { onInvite(email) }, enabled = email.isNotBlank()) { Text("초대 보내기") }
+            else TextButton(onClick = onDismiss) { Text("확인") }
+        },
+        dismissButton = { if (canInvite) TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }
 
 @Composable
@@ -182,15 +303,25 @@ private fun ReviewEditor(review: Review?, onSave: (Int, String) -> Unit) {
 
 @Composable
 private fun InputDialog(title: String, onDismiss: () -> Unit, enabled: Boolean, onSave: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-    }, confirmButton = { Button(onClick = onSave, enabled = enabled) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } })
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) },
+        confirmButton = { Button(onClick = onSave, enabled = enabled) { Text("저장") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }
 
 @Composable
 private fun Field(value: String, onChange: (String) -> Unit, label: String) {
     OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = false)
+}
+
+@Composable
+private fun LoadingOverlay() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
 }
 
 @Composable
