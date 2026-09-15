@@ -40,7 +40,20 @@ data class CreateItemRequest(
 data class UpdateNotificationRequest(val enabled: Boolean, val minutesBefore: Int)
 data class RegisterDeviceRequest(val token: String)
 data class SaveReviewRequest(val rating: Int, val content: String)
-data class Review(val id: String, val itemId: String, val rating: Int, val content: String, val updatedAt: String)
+data class ReviewPhoto(
+    val id: String,
+    val originalName: String,
+    val contentType: String,
+    val sizeBytes: Long,
+)
+data class Review(
+    val id: String,
+    val itemId: String,
+    val rating: Int,
+    val content: String,
+    val updatedAt: String,
+    val photos: List<ReviewPhoto> = emptyList(),
+)
 
 data class EmailPasswordRequest(val email: String, val password: String)
 data class AuthResponse(val accessToken: String, val userId: String, val email: String)

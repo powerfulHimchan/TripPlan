@@ -15,7 +15,7 @@
 3. 여행에 시간순 일정 추가
 4. 일정마다 Push 알림 On/Off 및 알림 시각 설정
 5. 서버 스케줄러가 도래한 일정을 FCM으로 전송
-6. 종료된 여행의 각 계획에 별점과 후기 저장
+6. 종료된 여행의 각 계획에 별점·후기와 사진 저장(장당 5MB, 최대 5장)
 7. 가입된 회원 초대, 수락/거절 및 공동 편집
 
 ## 빠른 실행
@@ -41,6 +41,7 @@ Firebase 키가 없으면 Push는 서버 로그로 출력됩니다. 실제 전�
 export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/firebase-service-account.json
 export FCM_ENABLED=true
 export JWT_SECRET=32바이트_이상의_운영용_랜덤_문자열
+export REVIEW_UPLOAD_DIR=/영속_볼륨/tripplan/reviews
 ```
 
 ### 3. Android 실행
@@ -54,7 +55,8 @@ export JWT_SECRET=32바이트_이상의_운영용_랜덤_문자열
 ## MVP 전제
 
 - 비밀번호는 BCrypt로 저장하고 API 인증은 Bearer JWT를 사용합니다.
-- 운영 전 Push 재시도/실패 큐, 이메일 인증, 비밀번호 재설정, 이미지 업로드 기능을 추가해야 합니다.
+- 후기 사진은 기본적으로 `uploads/reviews`에 저장됩니다. 운영 환경에서는 `REVIEW_UPLOAD_DIR`을 영속 볼륨으로 지정하고, 서비스 규모가 커지면 S3 같은 오브젝트 스토리지로 교체하는 것을 권장합니다.
+- 운영 전 Push 재시도/실패 큐, 이메일 인증, 비밀번호 재설정 기능을 추가해야 합니다.
 - 일정 알림은 서버 기준 1분 간격으로 확인하며 중복 발송 방지 시각을 DB에 기록합니다.
 
 ## 테스트

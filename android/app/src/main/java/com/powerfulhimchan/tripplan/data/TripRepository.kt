@@ -5,6 +5,9 @@ import com.powerfulhimchan.tripplan.model.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -41,9 +44,27 @@ class TripRepository(private val tokenStore: TokenStore) {
     suspend fun getReview(itemId: String) = api.getReview(itemId)
     suspend fun saveReview(itemId: String, rating: Int, content: String) =
         api.saveReview(itemId, SaveReviewRequest(rating, content))
+    suspend fun uploadReviewPhotos(itemId: String, uploads: List<ReviewPhotoUpload>): Review {
+        val parts = uploads.map { upload ->
+            MultipartBody.Part.createFormData(
+                "files",
+                upload.fileName,
+                upload.bytes.toRequestBody(upload.contentType.toMediaType()),
+            )
+        }
+        return api.uploadReviewPhotos(itemId, parts)
+    }
+    suspend fun reviewPhoto(itemId: String, photoId: String) = api.getReviewPhoto(itemId, photoId).bytes()
+    suspend fun deleteReviewPhoto(itemId: String, photoId: String) = api.deleteReviewPhoto(itemId, photoId)
     suspend fun invite(tripId: String, email: String) = api.invite(tripId, InviteRequest(email))
     suspend fun invitations() = api.getInvitations()
     suspend fun acceptInvitation(id: String) = api.acceptInvitation(id)
     suspend fun declineInvitation(id: String) = api.declineInvitation(id)
     suspend fun members(tripId: String) = api.getMembers(tripId)
 }
+
+data class ReviewPhotoUpload(
+    val fileName: String,
+    val contentType: String,
+    val bytes: ByteArray,
+)

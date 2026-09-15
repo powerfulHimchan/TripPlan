@@ -1,6 +1,8 @@
 package com.powerfulhimchan.tripplan.data
 
 import com.powerfulhimchan.tripplan.model.*
+import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.http.*
 
 interface TripApi {
@@ -30,6 +32,26 @@ interface TripApi {
 
     @PUT("api/v1/items/{itemId}/review")
     suspend fun saveReview(@Path("itemId") itemId: String, @Body request: SaveReviewRequest): Review
+
+    @Multipart
+    @POST("api/v1/items/{itemId}/review/photos")
+    suspend fun uploadReviewPhotos(
+        @Path("itemId") itemId: String,
+        @Part files: List<MultipartBody.Part>,
+    ): Review
+
+    @Streaming
+    @GET("api/v1/items/{itemId}/review/photos/{photoId}/content")
+    suspend fun getReviewPhoto(
+        @Path("itemId") itemId: String,
+        @Path("photoId") photoId: String,
+    ): ResponseBody
+
+    @DELETE("api/v1/items/{itemId}/review/photos/{photoId}")
+    suspend fun deleteReviewPhoto(
+        @Path("itemId") itemId: String,
+        @Path("photoId") photoId: String,
+    ): Review
 
     @POST("api/v1/trips/{tripId}/invitations")
     suspend fun invite(@Path("tripId") tripId: String, @Body request: InviteRequest): Invitation

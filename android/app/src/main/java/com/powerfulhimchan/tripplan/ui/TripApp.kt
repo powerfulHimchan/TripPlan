@@ -2,6 +2,11 @@
 
 package com.powerfulhimchan.tripplan.ui
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,7 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -33,7 +42,8 @@ fun TripApp(viewModel: TripViewModel) {
                 )
                 else -> TripDetailScreen(
                     state, { viewModel.select(null) }, viewModel::addItem,
-                    viewModel::toggleNotification, viewModel::saveReview, viewModel::invite,
+                    viewModel::toggleNotification, viewModel::saveReview,
+                    viewModel::deleteReviewPhoto, viewModel::invite,
                 )
             }
             if (state.loading) LoadingOverlay()
@@ -161,7 +171,8 @@ private fun TripDetailScreen(
     onBack: () -> Unit,
     onAddItem: (CreateItemRequest) -> Unit,
     onToggle: (ItineraryItem, Boolean) -> Unit,
-    onSaveReview: (String, Int, String) -> Unit,
+    onSaveReview: (String, Int, String, List<Uri>) -> Unit,
+    onDeleteReviewPhoto: (String, String) -> Unit,
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -192,7 +203,9 @@ private fun TripDetailScreen(
             items(trip.items, key = { it.id }) { item ->
                 ItineraryCard(
                     item, onToggle, tripFinished, state.reviews[item.id],
-                    { rating, content -> onSaveReview(item.id, rating, content) },
+                    state.reviewPhotoBytes,
+                    { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
+                    { photoId -> onDeleteReviewPhoto(item.id, photoId) },
                 )
             }
             item { Spacer(Modifier.height(72.dp)) }
@@ -234,7 +247,9 @@ private fun ItineraryCard(
     onToggle: (ItineraryItem, Boolean) -> Unit,
     reviewEnabled: Boolean,
     review: Review?,
-    onSaveReview: (Int, String) -> Unit,
+    photoBytes: Map<String, ByteArray>,
+    onSaveReview: (Int, String, List<Uri>) -> Unit,
+    onDeletePhoto: (String) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column {
@@ -249,7 +264,7 @@ private fun ItineraryCard(
             }
             if (reviewEnabled) {
                 HorizontalDivider()
-                ReviewEditor(review, onSaveReview)
+                ReviewEditor(review, photoBytes, onSaveReview, onDeletePhoto)
             }
         }
     }
@@ -290,14 +305,86 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
 }
 
 @Composable
-private fun ReviewEditor(review: Review?, onSave: (Int, String) -> Unit) {
+private fun ReviewEditor(
+    review: Review?,
+    photoBytes: Map<String, ByteArray>,
+    onSave: (Int, String, List<Uri>) -> Unit,
+    onDeletePhoto: (String) -> Unit,
+) {
     var rating by remember(review) { mutableIntStateOf(review?.rating ?: 5) }
     var content by remember(review) { mutableStateOf(review?.content ?: "") }
+    var selectedPhotos by remember(review?.updatedAt) { mutableStateOf<List<Uri>>(emptyList()) }
+    val existingCount = review?.photos?.size ?: 0
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        selectedPhotos = (selectedPhotos + uris).distinct().take(5 - existingCount)
+    }
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("이 계획 후기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Row { (1..5).forEach { score -> TextButton(onClick = { rating = score }) { Text(if (score <= rating) "★" else "☆") } } }
         Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
-        Button(onClick = { onSave(rating, content) }, enabled = content.isNotBlank(), modifier = Modifier.align(Alignment.End)) { Text("후기 저장") }
+        review?.photos?.forEach { photo ->
+            ReviewPhotoRow(
+                name = photo.originalName,
+                bytes = photoBytes[photo.id],
+                onRemove = { onDeletePhoto(photo.id) },
+            )
+        }
+        selectedPhotos.forEach { uri ->
+            SelectedPhotoRow(uri) { selectedPhotos = selectedPhotos - uri }
+        }
+        OutlinedButton(
+            onClick = { picker.launch("image/*") },
+            enabled = existingCount + selectedPhotos.size < 5,
+        ) { Text("사진 추가 (${existingCount + selectedPhotos.size}/5)") }
+        Text("사진은 장당 최대 5MB, 후기당 최대 5장까지 등록할 수 있습니다.", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Button(
+            onClick = { onSave(rating, content, selectedPhotos) },
+            enabled = content.isNotBlank(),
+            modifier = Modifier.align(Alignment.End),
+        ) { Text("후기 저장") }
+    }
+}
+
+@Composable
+private fun ReviewPhotoRow(name: String, bytes: ByteArray?, onRemove: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        bytes?.let {
+            val bitmap = remember(it) {
+                BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+            }
+            bitmap?.let { decoded ->
+                Image(
+                    bitmap = decoded.asImageBitmap(),
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                )
+            }
+        }
+        Text(name, modifier = Modifier.weight(1f), maxLines = 1)
+        TextButton(onClick = onRemove) { Text("삭제") }
+    }
+}
+
+@Composable
+private fun SelectedPhotoRow(uri: Uri, onRemove: () -> Unit) {
+    val context = LocalContext.current
+    val bitmap by produceState<android.graphics.Bitmap?>(null, uri) {
+        value = context.contentResolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = 4 })
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = "선택한 후기 사진",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+            )
+        }
+        Text("선택한 사진", modifier = Modifier.weight(1f))
+        TextButton(onClick = onRemove) { Text("취소") }
     }
 }
 

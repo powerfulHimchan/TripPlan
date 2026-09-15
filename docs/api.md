@@ -71,6 +71,29 @@
 { "rating": 5, "content": "아이와 함께한 첫 해외여행. 동선이 여유로워 좋았다." }
 ```
 
+## 계획별 후기 사진 등록
+
+먼저 후기 본문을 저장한 뒤 사진을 등록합니다.
+
+`POST /api/v1/items/{itemId}/review/photos`
+
+- Content-Type: `multipart/form-data`
+- 폼 필드명: `files`
+- 허용 형식: JPG, PNG, WEBP, HEIC
+- 제한: 사진 한 장당 5MB 이하, 후기당 총 5장 이하
+
+```bash
+curl -X POST "$API_URL/api/v1/items/$ITEM_ID/review/photos" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "files=@photo1.jpg" \
+  -F "files=@photo2.jpg"
+```
+
+사진 원본 조회와 삭제:
+
+- `GET /api/v1/items/{itemId}/review/photos/{photoId}/content`
+- `DELETE /api/v1/items/{itemId}/review/photos/{photoId}`
+
 ## 여행 공유 초대
 
 `POST /api/v1/trips/{tripId}/invitations`

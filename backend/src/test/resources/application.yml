@@ -11,5 +11,7 @@ tripplan:
   auth:
     jwt-secret: tripplan-test-secret-key-at-least-32-bytes-long
     token-valid-days: 1
+  review:
+    upload-dir: build/test-review-uploads
   notification:
     fcm-enabled: false

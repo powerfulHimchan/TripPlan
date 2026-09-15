@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.multipart.MaxUploadSizeExceededException
 
 data class ApiError(val code: String, val message: String)
 
@@ -24,5 +25,9 @@ class ApiExceptionHandler {
         val message = e.bindingResult.fieldErrors.firstOrNull()?.defaultMessage ?: "입력값을 확인해주세요."
         return ResponseEntity.badRequest().body(ApiError("VALIDATION_ERROR", message))
     }
-}
 
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun tooLarge(e: MaxUploadSizeExceededException) =
+        ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+            .body(ApiError("PHOTO_TOO_LARGE", "사진 한 장은 최대 5MB, 후기당 최대 5장까지 등록할 수 있습니다."))
+}

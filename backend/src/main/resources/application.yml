@@ -1,6 +1,10 @@
 spring:
   application:
     name: tripplan-backend
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 26MB
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/tripplan}
     username: ${DB_USERNAME:tripplan}
@@ -19,6 +23,8 @@ tripplan:
   auth:
     jwt-secret: ${JWT_SECRET:tripplan-local-development-secret-key-change-me}
     token-valid-days: ${JWT_VALID_DAYS:30}
+  review:
+    upload-dir: ${REVIEW_UPLOAD_DIR:uploads/reviews}
   notification:
     fcm-enabled: ${FCM_ENABLED:false}
 
