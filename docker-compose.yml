@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tripplan
+      POSTGRES_USER: tripplan
+      POSTGRES_PASSWORD: tripplan
+    ports:
+      - "5432:5432"
+    volumes:
+      - tripplan-db:/var/lib/postgresql/data
+
+volumes:
+  tripplan-db:
+

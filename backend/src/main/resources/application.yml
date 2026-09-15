@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: tripplan-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tripplan}
+    username: ${DB_USERNAME:tripplan}
+    password: ${DB_PASSWORD:tripplan}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+
+tripplan:
+  notification:
+    fcm-enabled: ${FCM_ENABLED:false}
+
+server:
+  error:
+    include-message: always
+
