@@ -19,10 +19,9 @@ interface TripApi {
     @POST("api/v1/devices")
     suspend fun registerDevice(@Header("X-User-Id") userId: String, @Body request: RegisterDeviceRequest)
 
-    @GET("api/v1/trips/{tripId}/review")
-    suspend fun getReview(@Header("X-User-Id") userId: String, @Path("tripId") tripId: String): Review?
+    @GET("api/v1/items/{itemId}/review")
+    suspend fun getReview(@Header("X-User-Id") userId: String, @Path("itemId") itemId: String): Review?
 
-    @PUT("api/v1/trips/{tripId}/review")
-    suspend fun saveReview(@Header("X-User-Id") userId: String, @Path("tripId") tripId: String, @Body request: SaveReviewRequest): Review
+    @PUT("api/v1/items/{itemId}/review")
+    suspend fun saveReview(@Header("X-User-Id") userId: String, @Path("itemId") itemId: String, @Body request: SaveReviewRequest): Review
 }
-

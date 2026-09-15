@@ -1,6 +1,6 @@
 # TripPlan
 
-여행 일정 작성, 일정별 Push 알림 설정, 여행 종료 후 후기를 기록하는 Android + Kotlin Backend MVP입니다.
+여행 일정 작성, 일정별 Push 알림 설정, 여행 종료 후 계획별 후기를 기록하는 Android + Kotlin Backend MVP입니다.
 
 ## 구성
 
@@ -14,7 +14,7 @@
 2. 여행에 시간순 일정 추가
 3. 일정마다 Push 알림 On/Off 및 알림 시각 설정
 4. 서버 스케줄러가 도래한 일정을 FCM으로 전송
-5. 종료된 여행에 별점과 후기 저장
+5. 종료된 여행의 각 계획에 별점과 후기 저장
 
 ## 빠른 실행
 
@@ -60,4 +60,3 @@ export FCM_ENABLED=true
 cd backend
 gradle test
 ```
-

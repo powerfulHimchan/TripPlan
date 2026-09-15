@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 data class TripUiState(
     val trips: List<Trip> = emptyList(),
     val selected: Trip? = null,
-    val review: Review? = null,
+    val reviews: Map<String, Review> = emptyMap(),
     val loading: Boolean = false,
     val error: String? = null,
 )
@@ -29,8 +29,13 @@ class TripViewModel(private val repository: TripRepository = TripRepository()) :
     }
 
     fun select(trip: Trip?) {
-        _state.value = _state.value.copy(selected = trip, review = null)
-        if (trip != null) launch { _state.value.copy(review = repository.getReview(trip.id)) }
+        _state.value = _state.value.copy(selected = trip, reviews = emptyMap())
+        if (trip != null) launch {
+            val reviews = trip.items.mapNotNull { item ->
+                repository.getReview(item.id)?.let { item.id to it }
+            }.toMap()
+            _state.value.copy(reviews = reviews)
+        }
     }
 
     fun createTrip(request: CreateTripRequest) = launch {
@@ -57,9 +62,11 @@ class TripViewModel(private val repository: TripRepository = TripRepository()) :
         }
     }
 
-    fun saveReview(rating: Int, content: String) {
-        val trip = _state.value.selected ?: return
-        launch { _state.value.copy(review = repository.saveReview(trip.id, rating, content)) }
+    fun saveReview(itemId: String, rating: Int, content: String) {
+        launch {
+            val review = repository.saveReview(itemId, rating, content)
+            _state.value.copy(reviews = _state.value.reviews + (itemId to review))
+        }
     }
 
     fun registerDevice(token: String) = launch { repository.registerDevice(token); _state.value }
@@ -73,4 +80,3 @@ class TripViewModel(private val repository: TripRepository = TripRepository()) :
         }
     }
 }
-

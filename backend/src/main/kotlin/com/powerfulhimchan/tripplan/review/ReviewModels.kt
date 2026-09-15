@@ -6,20 +6,20 @@ import java.time.Instant
 import java.util.UUID
 
 @Entity
-@Table(name = "trip_reviews")
+@Table(name = "itinerary_reviews")
 class TripReview(
     @Id val id: UUID = UUID.randomUUID(),
-    @Column(nullable = false, unique = true) val tripId: UUID,
+    @Column(nullable = false, unique = true) val itemId: UUID,
     @Column(nullable = false) var rating: Int,
     @Column(nullable = false, columnDefinition = "TEXT") var content: String,
     @Column(nullable = false) val createdAt: Instant = Instant.now(),
     @Column(nullable = false) var updatedAt: Instant = Instant.now(),
 ) {
-    protected constructor() : this(tripId = UUID.randomUUID(), rating = 1, content = "")
+    protected constructor() : this(itemId = UUID.randomUUID(), rating = 1, content = "")
 }
 
 interface TripReviewRepository : org.springframework.data.jpa.repository.JpaRepository<TripReview, UUID> {
-    fun findByTripId(tripId: UUID): TripReview?
+    fun findByItemId(itemId: UUID): TripReview?
 }
 
 data class SaveReviewRequest(
@@ -27,5 +27,4 @@ data class SaveReviewRequest(
     @field:NotBlank @field:Size(max = 5000) val content: String,
 )
 
-data class ReviewResponse(val id: UUID, val tripId: UUID, val rating: Int, val content: String, val updatedAt: Instant)
-
+data class ReviewResponse(val id: UUID, val itemId: UUID, val rating: Int, val content: String, val updatedAt: Instant)

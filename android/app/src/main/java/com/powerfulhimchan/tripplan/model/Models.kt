@@ -40,5 +40,4 @@ data class CreateItemRequest(
 data class UpdateNotificationRequest(val enabled: Boolean, val minutesBefore: Int)
 data class RegisterDeviceRequest(val token: String)
 data class SaveReviewRequest(val rating: Int, val content: String)
-data class Review(val id: String, val tripId: String, val rating: Int, val content: String, val updatedAt: String)
-
+data class Review(val id: String, val itemId: String, val rating: Int, val content: String, val updatedAt: String)

@@ -47,11 +47,10 @@ MVP 인증 대용으로 모든 요청에 `X-User-Id` 헤더를 사용합니다.
 { "token": "FCM_DEVICE_TOKEN" }
 ```
 
-## 후기 작성 또는 수정
+## 계획별 후기 작성 또는 수정
 
-`PUT /api/v1/trips/{tripId}/review`
+`PUT /api/v1/items/{itemId}/review`
 
 ```json
 { "rating": 5, "content": "아이와 함께한 첫 해외여행. 동선이 여유로워 좋았다." }
 ```
-

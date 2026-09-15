@@ -26,8 +26,7 @@ class TripRepository {
     suspend fun setNotification(item: ItineraryItem, enabled: Boolean) =
         api.updateNotification(userId, item.id, UpdateNotificationRequest(enabled, item.notificationMinutesBefore))
     suspend fun registerDevice(token: String) = api.registerDevice(userId, RegisterDeviceRequest(token))
-    suspend fun getReview(tripId: String) = api.getReview(userId, tripId)
-    suspend fun saveReview(tripId: String, rating: Int, content: String) =
-        api.saveReview(userId, tripId, SaveReviewRequest(rating, content))
+    suspend fun getReview(itemId: String) = api.getReview(userId, itemId)
+    suspend fun saveReview(itemId: String, rating: Int, content: String) =
+        api.saveReview(userId, itemId, SaveReviewRequest(rating, content))
 }
-

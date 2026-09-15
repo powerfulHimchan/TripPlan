@@ -73,9 +73,10 @@ private fun TripDetailScreen(
     onBack: () -> Unit,
     onAddItem: (CreateItemRequest) -> Unit,
     onToggle: (ItineraryItem, Boolean) -> Unit,
-    onSaveReview: (Int, String) -> Unit,
+    onSaveReview: (String, Int, String) -> Unit,
 ) {
     val trip = state.selected ?: return
+    val tripFinished = !LocalDate.now().isBefore(LocalDate.parse(trip.endDate))
     var showItem by remember { mutableStateOf(false) }
     Scaffold(
         topBar = { TopAppBar(title = { Text(trip.title) }, navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록") } }) },
@@ -91,9 +92,14 @@ private fun TripDetailScreen(
                 }
             }
             if (trip.items.isEmpty()) item { Text("등록된 일정이 없습니다.", modifier = Modifier.padding(12.dp), color = Color.Gray) }
-            items(trip.items, key = { it.id }) { item -> ItineraryCard(item, onToggle) }
-            if (!LocalDate.now().isBefore(LocalDate.parse(trip.endDate))) {
-                item { ReviewEditor(state.review, onSaveReview) }
+            items(trip.items, key = { it.id }) { item ->
+                ItineraryCard(
+                    item = item,
+                    onToggle = onToggle,
+                    reviewEnabled = tripFinished,
+                    review = state.reviews[item.id],
+                    onSaveReview = { rating, content -> onSaveReview(item.id, rating, content) },
+                )
             }
             item { Spacer(Modifier.height(72.dp)) }
         }
@@ -102,16 +108,28 @@ private fun TripDetailScreen(
 }
 
 @Composable
-private fun ItineraryCard(item: ItineraryItem, onToggle: (ItineraryItem, Boolean) -> Unit) {
+private fun ItineraryCard(
+    item: ItineraryItem,
+    onToggle: (ItineraryItem, Boolean) -> Unit,
+    reviewEnabled: Boolean,
+    review: Review?,
+    onSaveReview: (Int, String) -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(item.title, fontWeight = FontWeight.SemiBold)
-                Text(item.scheduledAt.replace("T", " ").take(16), style = MaterialTheme.typography.bodySmall)
-                item.place?.let { Text(it, color = Color.Gray) }
-                if (item.notificationEnabled) Text("${item.notificationMinutesBefore}분 전 알림", color = Teal, style = MaterialTheme.typography.labelMedium)
+        Column {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(item.title, fontWeight = FontWeight.SemiBold)
+                    Text(item.scheduledAt.replace("T", " ").take(16), style = MaterialTheme.typography.bodySmall)
+                    item.place?.let { Text(it, color = Color.Gray) }
+                    if (item.notificationEnabled) Text("${item.notificationMinutesBefore}분 전 알림", color = Teal, style = MaterialTheme.typography.labelMedium)
+                }
+                Switch(checked = item.notificationEnabled, onCheckedChange = { onToggle(item, it) })
             }
-            Switch(checked = item.notificationEnabled, onCheckedChange = { onToggle(item, it) })
+            if (reviewEnabled) {
+                HorizontalDivider()
+                ReviewEditor(review, onSaveReview)
+            }
         }
     }
 }
@@ -154,13 +172,11 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
 private fun ReviewEditor(review: Review?, onSave: (Int, String) -> Unit) {
     var rating by remember(review) { mutableIntStateOf(review?.rating ?: 5) }
     var content by remember(review) { mutableStateOf(review?.content ?: "") }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("여행 후기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row { (1..5).forEach { score -> TextButton(onClick = { rating = score }) { Text(if (score <= rating) "★" else "☆") } } }
-            Field(content, { content = it }, "여행에서 기억하고 싶은 점")
-            Button(onClick = { onSave(rating, content) }, enabled = content.isNotBlank(), modifier = Modifier.align(Alignment.End)) { Text("후기 저장") }
-        }
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("이 계획 후기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row { (1..5).forEach { score -> TextButton(onClick = { rating = score }) { Text(if (score <= rating) "★" else "☆") } } }
+        Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
+        Button(onClick = { onSave(rating, content) }, enabled = content.isNotBlank(), modifier = Modifier.align(Alignment.End)) { Text("후기 저장") }
     }
 }
 
