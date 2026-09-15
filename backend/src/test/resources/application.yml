@@ -8,6 +8,8 @@ spring:
   flyway:
     enabled: false
 tripplan:
+  auth:
+    jwt-secret: tripplan-test-secret-key-at-least-32-bytes-long
+    token-valid-days: 1
   notification:
     fcm-enabled: false
-
