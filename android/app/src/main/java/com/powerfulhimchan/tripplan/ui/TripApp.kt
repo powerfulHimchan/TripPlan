@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -35,14 +36,36 @@ import com.powerfulhimchan.tripplan.model.*
 import java.time.LocalDate
 
 private val Teal = Color(0xFF26667F)
-private val Sand = Color(0xFFF6F1E9)
 private val Sky = Color(0xFFDFF6FC)
+private val PaleSky = Color(0xFFF2FAFC)
 private val FieldBackground = Color(0xFFF8FBFC)
+private val Coral = Color(0xFFFF7D6B)
+private val Leaf = Color(0xFF55A97B)
+private val Ink = Color(0xFF20343D)
+private val Muted = Color(0xFF6A7F88)
+private val Border = Color(0xFFDCE8EC)
 
 @Composable
 fun TripApp(viewModel: TripViewModel) {
     val state by viewModel.state.collectAsState()
-    MaterialTheme(colorScheme = lightColorScheme(primary = Teal, surface = Color(0xFFF8FAF9))) {
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = Teal,
+            onPrimary = Color.White,
+            secondary = Coral,
+            tertiary = Leaf,
+            background = PaleSky,
+            surface = Color.White,
+            surfaceVariant = Sky,
+            onSurface = Ink,
+            outline = Border,
+        ),
+        shapes = Shapes(
+            small = RoundedCornerShape(14.dp),
+            medium = RoundedCornerShape(20.dp),
+            large = RoundedCornerShape(28.dp),
+        ),
+    ) {
         Surface(Modifier.fillMaxSize()) {
             when {
                 !state.authenticated -> AuthScreen(state.loading, viewModel::login, viewModel::register)
@@ -71,12 +94,7 @@ private fun AuthScreen(
     var registerMode by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = Teal,
-        unfocusedBorderColor = Color(0xFFD9E4E8),
-        focusedContainerColor = FieldBackground,
-        unfocusedContainerColor = FieldBackground,
-    )
+    val fieldColors = yeodamFieldColors()
     Box(
         Modifier
             .fillMaxSize()
@@ -166,34 +184,90 @@ private fun TripListScreen(
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var showInvitations by remember { mutableStateOf(false) }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Column { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold); Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall) } },
-                actions = {
-                    TextButton(onClick = { showInvitations = true }) { Text("받은 초대 ${state.invitations.size}") }
-                    TextButton(onClick = onLogout) { Text("로그아웃") }
-                },
-            )
-        },
-        floatingActionButton = { FloatingActionButton(onClick = { showCreate = true }) { Text("＋") } }
-    ) { padding ->
-        if (state.trips.isEmpty() && !state.loading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("첫 여행을 계획해보세요", style = MaterialTheme.typography.headlineSmall)
-                    Text("여행별 일정과 알림을 한곳에서 관리합니다.", color = Color.Gray)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    colors = yeodamTopBarColors(),
+                    title = {
+                        Column {
+                            Text(stringResource(R.string.app_name), fontWeight = FontWeight.ExtraBold, color = Teal)
+                            Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall, color = Muted)
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { showInvitations = true }) {
+                            Text("초대 ${state.invitations.size}", fontWeight = FontWeight.SemiBold)
+                        }
+                        TextButton(onClick = onLogout) { Text("로그아웃", color = Muted) }
+                    },
+                )
+            },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = { showCreate = true },
+                    containerColor = Coral,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Text("＋ 새 여행", fontWeight = FontWeight.Bold) }
+            },
+        ) { padding ->
+            if (state.trips.isEmpty() && !state.loading) {
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    item {
+                        Image(
+                            painter = painterResource(R.drawable.login_hero),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(1.8f),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Text("첫 여행을 계획해보세요", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Ink)
+                        Spacer(Modifier.height(8.dp))
+                        Text("일정과 알림, 여행 후 추억까지\n여담에서 함께 담아보세요.", color = Muted, lineHeight = 22.sp)
+                        Spacer(Modifier.height(22.dp))
+                        Button(
+                            onClick = { showCreate = true },
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().height(54.dp),
+                        ) { Text("첫 여행 만들기", fontWeight = FontWeight.Bold) }
+                    }
                 }
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(state.trips, key = { it.id }) { trip ->
-                    Card(onClick = { onSelect(trip) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-                        Column(Modifier.padding(20.dp)) {
-                            Text(trip.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(6.dp))
-                            Text("${trip.destination}  ·  ${trip.startDate} ~ ${trip.endDate}")
-                            Text("일정 ${trip.items.size}개", color = Teal)
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    item {
+                        Text("어디로 떠나볼까요?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Ink)
+                        Text("계획하고, 함께 담은 여행 ${state.trips.size}개", color = Muted)
+                    }
+                    items(state.trips, key = { it.id }) { trip ->
+                        Card(
+                            onClick = { onSelect(trip) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        ) {
+                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Surface(shape = RoundedCornerShape(50), color = Sky) {
+                                    Text(trip.destination, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Teal, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                }
+                                Text(trip.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
+                                Text("${trip.startDate}  —  ${trip.endDate}", color = Muted)
+                                HorizontalDivider(color = Border)
+                                Text("일정 ${trip.items.size}개  ·  추억을 담으러 가기 →", color = Coral, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -213,18 +287,25 @@ private fun InvitationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("받은 여행 초대") },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color.White,
+        tonalElevation = 10.dp,
+        title = { Text("받은 여행 초대", color = Teal, fontWeight = FontWeight.ExtraBold) },
         text = {
-            if (invitations.isEmpty()) Text("대기 중인 초대가 없습니다.")
+            if (invitations.isEmpty()) Text("대기 중인 초대가 없습니다.", color = Muted)
             else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 invitations.forEach { invitation ->
-                    Card {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = PaleSky),
+                        border = BorderStroke(1.dp, Border),
+                    ) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(invitation.tripTitle, fontWeight = FontWeight.Bold)
-                            Text("${invitation.inviterEmail} 님의 초대", style = MaterialTheme.typography.bodySmall)
-                            Row {
+                            Text(invitation.tripTitle, fontWeight = FontWeight.Bold, color = Ink)
+                            Text("${invitation.inviterEmail} 님의 초대", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            Row(modifier = Modifier.align(Alignment.End)) {
                                 TextButton(onClick = { onDecline(invitation.id) }) { Text("거절") }
-                                Button(onClick = { onAccept(invitation.id) }) { Text("수락") }
+                                Button(onClick = { onAccept(invitation.id) }, shape = RoundedCornerShape(14.dp)) { Text("수락") }
                             }
                         }
                     }
@@ -250,35 +331,79 @@ private fun TripDetailScreen(
     val canInvite = state.members.any { it.owner && it.email == state.email }
     var showItem by remember { mutableStateOf(false) }
     var showSharing by remember { mutableStateOf(false) }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(trip.title) },
-                navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록") } },
-                actions = { TextButton(onClick = { showSharing = true }) { Text("공유 ${state.members.size}") } },
-            )
-        },
-        floatingActionButton = { FloatingActionButton(onClick = { showItem = true }) { Text("＋ 일정") } }
-    ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = Sand), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp)) {
-                        Text(trip.destination, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("${trip.startDate} ~ ${trip.endDate}")
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    colors = yeodamTopBarColors(),
+                    title = { Text(trip.title, fontWeight = FontWeight.ExtraBold, color = Ink) },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록", fontWeight = FontWeight.SemiBold) } },
+                    actions = { TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) } },
+                )
+            },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = { showItem = true },
+                    containerColor = Coral,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Text("＋ 일정 추가", fontWeight = FontWeight.Bold) }
+            },
+        ) { padding ->
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(Brush.linearGradient(listOf(Teal, Color(0xFF3E8EA0))))
+                            .padding(22.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.18f)) {
+                                Text("여행지", modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                            }
+                            Text(trip.destination, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                            Text("${trip.startDate}  —  ${trip.endDate}", color = Color.White.copy(alpha = 0.82f))
+                            Text("일정 ${trip.items.size}개 · 함께하는 사람 ${state.members.size}명", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
+                item {
+                    Text(if (tripFinished) "여행의 순간들" else "다가오는 일정", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Text(if (tripFinished) "계획마다 기억에 남은 이야기를 기록해보세요." else "알림을 켜두면 계획한 시간에 알려드려요.", color = Muted)
+                }
+                if (trip.items.isEmpty()) item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Border),
+                    ) {
+                        Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("아직 등록된 일정이 없어요", fontWeight = FontWeight.Bold, color = Ink)
+                            Text("첫 일정을 추가해 여행을 채워보세요.", color = Muted)
+                        }
+                    }
+                }
+                items(trip.items, key = { it.id }) { item ->
+                    ItineraryCard(
+                        item, onToggle, tripFinished, state.reviews[item.id],
+                        state.reviewPhotoBytes,
+                        { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
+                        { photoId -> onDeleteReviewPhoto(item.id, photoId) },
+                    )
+                }
             }
-            if (trip.items.isEmpty()) item { Text("등록된 일정이 없습니다.", modifier = Modifier.padding(12.dp), color = Color.Gray) }
-            items(trip.items, key = { it.id }) { item ->
-                ItineraryCard(
-                    item, onToggle, tripFinished, state.reviews[item.id],
-                    state.reviewPhotoBytes,
-                    { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
-                    { photoId -> onDeleteReviewPhoto(item.id, photoId) },
-                )
-            }
-            item { Spacer(Modifier.height(72.dp)) }
         }
     }
     if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
@@ -293,18 +418,36 @@ private fun SharingDialog(members: List<TripMember>, canInvite: Boolean, onDismi
     var email by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("함께 계획하는 사람") },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color.White,
+        tonalElevation = 10.dp,
+        title = { Text("함께 계획하는 사람", color = Teal, fontWeight = FontWeight.ExtraBold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                members.forEach { member -> Text("${if (member.owner) "소유자" else "참여자"} · ${member.email}") }
+                members.forEach { member ->
+                    Surface(shape = RoundedCornerShape(16.dp), color = PaleSky, border = BorderStroke(1.dp, Border)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(if (member.owner) "여행 만든 사람" else "함께하는 사람", color = Coral, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text(member.email, color = Ink)
+                        }
+                    }
+                }
                 if (canInvite) {
-                    HorizontalDivider()
-                    OutlinedTextField(email, { email = it }, label = { Text("가입된 회원 이메일") }, singleLine = true)
+                    HorizontalDivider(color = Border)
+                    OutlinedTextField(
+                        email,
+                        { email = it },
+                        label = { Text("가입된 회원 이메일") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = yeodamFieldColors(),
+                    )
                 }
             }
         },
         confirmButton = {
-            if (canInvite) Button(onClick = { onInvite(email) }, enabled = email.isNotBlank()) { Text("초대 보내기") }
+            if (canInvite) Button(onClick = { onInvite(email) }, enabled = email.isNotBlank(), shape = RoundedCornerShape(14.dp)) { Text("초대 보내기") }
             else TextButton(onClick = onDismiss) { Text("확인") }
         },
         dismissButton = { if (canInvite) TextButton(onClick = onDismiss) { Text("취소") } },
@@ -321,19 +464,35 @@ private fun ItineraryCard(
     onSaveReview: (Int, String, List<Uri>) -> Unit,
     onDeletePhoto: (String) -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = BorderStroke(1.dp, Border.copy(alpha = 0.7f)),
+    ) {
         Column {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(width = 5.dp, height = 54.dp).clip(RoundedCornerShape(50)).background(if (item.notificationEnabled) Coral else Border))
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(item.title, fontWeight = FontWeight.SemiBold)
-                    Text(item.scheduledAt.replace("T", " ").take(16), style = MaterialTheme.typography.bodySmall)
-                    item.place?.let { Text(it, color = Color.Gray) }
-                    if (item.notificationEnabled) Text("${item.notificationMinutesBefore}분 전 알림", color = Teal, style = MaterialTheme.typography.labelMedium)
+                    Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
+                    Text(item.scheduledAt.replace("T", " ").take(16), style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    item.place?.let { Text("장소 · $it", color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    if (item.notificationEnabled) {
+                        Text("${item.notificationMinutesBefore}분 전 알려드려요", color = Coral, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("알림 꺼짐", color = Muted, style = MaterialTheme.typography.labelMedium)
+                    }
                 }
-                Switch(checked = item.notificationEnabled, onCheckedChange = { onToggle(item, it) })
+                Switch(
+                    checked = item.notificationEnabled,
+                    onCheckedChange = { onToggle(item, it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Teal, uncheckedTrackColor = Border),
+                )
             }
             if (reviewEnabled) {
-                HorizontalDivider()
+                HorizontalDivider(color = Border)
                 ReviewEditor(review, photoBytes, onSaveReview, onDeletePhoto)
             }
         }
@@ -388,9 +547,18 @@ private fun ReviewEditor(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         selectedPhotos = (selectedPhotos + uris).distinct().take(5 - existingCount)
     }
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("이 계획 후기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Row { (1..5).forEach { score -> TextButton(onClick = { rating = score }) { Text(if (score <= rating) "★" else "☆") } } }
+    Column(Modifier.background(PaleSky).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("이 계획의 여담", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Teal)
+        Text("그날의 기분과 기억을 계획별로 남겨보세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            (1..5).forEach { score ->
+                TextButton(
+                    onClick = { rating = score },
+                    modifier = Modifier.size(40.dp),
+                    contentPadding = PaddingValues(0.dp),
+                ) { Text(if (score <= rating) "★" else "☆", color = Coral, fontSize = 26.sp) }
+            }
+        }
         Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
         review?.photos?.forEach { photo ->
             ReviewPhotoRow(
@@ -405,11 +573,14 @@ private fun ReviewEditor(
         OutlinedButton(
             onClick = { picker.launch("image/*") },
             enabled = existingCount + selectedPhotos.size < 5,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, Teal),
         ) { Text("사진 추가 (${existingCount + selectedPhotos.size}/5)") }
-        Text("사진은 장당 최대 5MB, 후기당 최대 5장까지 등록할 수 있습니다.", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Text("사진은 장당 최대 5MB, 후기당 최대 5장까지 등록할 수 있습니다.", style = MaterialTheme.typography.labelSmall, color = Muted)
         Button(
             onClick = { onSave(rating, content, selectedPhotos) },
             enabled = content.isNotBlank(),
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier.align(Alignment.End),
         ) { Text("후기 저장") }
     }
@@ -417,22 +588,24 @@ private fun ReviewEditor(
 
 @Composable
 private fun ReviewPhotoRow(name: String, bytes: ByteArray?, onRemove: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        bytes?.let {
-            val bitmap = remember(it) {
-                BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+    Surface(shape = RoundedCornerShape(14.dp), color = Color.White, border = BorderStroke(1.dp, Border)) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            bytes?.let {
+                val bitmap = remember(it) {
+                    BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                }
+                bitmap?.let { decoded ->
+                    Image(
+                        bitmap = decoded.asImageBitmap(),
+                        contentDescription = name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+                    )
+                }
             }
-            bitmap?.let { decoded ->
-                Image(
-                    bitmap = decoded.asImageBitmap(),
-                    contentDescription = name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
-                )
-            }
+            Text(name, modifier = Modifier.weight(1f), maxLines = 1, color = Ink)
+            TextButton(onClick = onRemove) { Text("삭제", color = Coral) }
         }
-        Text(name, modifier = Modifier.weight(1f), maxLines = 1)
-        TextButton(onClick = onRemove) { Text("삭제") }
     }
 }
 
@@ -444,17 +617,19 @@ private fun SelectedPhotoRow(uri: Uri, onRemove: () -> Unit) {
             BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = 4 })
         }
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        bitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription = "선택한 후기 사진",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
-            )
+    Surface(shape = RoundedCornerShape(14.dp), color = Color.White, border = BorderStroke(1.dp, Border)) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            bitmap?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "선택한 후기 사진",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+                )
+            }
+            Text("선택한 사진", modifier = Modifier.weight(1f), color = Ink)
+            TextButton(onClick = onRemove) { Text("취소", color = Coral) }
         }
-        Text("선택한 사진", modifier = Modifier.weight(1f))
-        TextButton(onClick = onRemove) { Text("취소") }
     }
 }
 
@@ -462,28 +637,63 @@ private fun SelectedPhotoRow(uri: Uri, onRemove: () -> Unit) {
 private fun InputDialog(title: String, onDismiss: () -> Unit, enabled: Boolean, onSave: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) },
-        confirmButton = { Button(onClick = onSave, enabled = enabled) { Text("저장") } },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color.White,
+        tonalElevation = 10.dp,
+        title = { Text(title, color = Teal, fontWeight = FontWeight.ExtraBold) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content) },
+        confirmButton = { Button(onClick = onSave, enabled = enabled, shape = RoundedCornerShape(14.dp)) { Text("저장") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
 }
 
 @Composable
 private fun Field(value: String, onChange: (String) -> Unit, label: String) {
-    OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = false)
+    OutlinedTextField(
+        value,
+        onChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = false,
+        shape = RoundedCornerShape(16.dp),
+        colors = yeodamFieldColors(),
+    )
 }
 
 @Composable
 private fun LoadingOverlay() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+    Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
+        Surface(shape = RoundedCornerShape(22.dp), color = Color.White, shadowElevation = 8.dp) {
+            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(color = Teal)
+                Text("여행을 담는 중이에요", color = Muted, style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 
 @Composable
 private fun ErrorSnackbar(message: String) {
     Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
-        Snackbar { Text(message) }
+        Snackbar(containerColor = Ink, contentColor = Color.White, shape = RoundedCornerShape(16.dp)) { Text(message) }
     }
 }
+
+@Composable
+private fun yeodamFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = Teal,
+    unfocusedBorderColor = Border,
+    focusedContainerColor = FieldBackground,
+    unfocusedContainerColor = FieldBackground,
+    focusedLabelColor = Teal,
+    cursorColor = Teal,
+)
+
+@Composable
+private fun yeodamTopBarColors() = TopAppBarDefaults.topAppBarColors(
+    containerColor = Color.Transparent,
+    scrolledContainerColor = Color.White.copy(alpha = 0.94f),
+    titleContentColor = Ink,
+    actionIconContentColor = Teal,
+    navigationIconContentColor = Teal,
+)
