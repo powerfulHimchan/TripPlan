@@ -1,6 +1,8 @@
-# TripPlan
+# 여담
 
-이메일로 가입해 여행을 작성하고, 일정별 Push 알림·계획별 후기·회원 간 공유를 이용하는 Android + Kotlin Backend MVP입니다.
+> 여행을 계획하고, 함께 담다
+
+이메일로 가입해 여행을 작성하고, 일정별 Push 알림·계획별 후기·회원 간 공유를 이용하는 Android + Kotlin Backend 앱입니다.
 
 ## 구성
 

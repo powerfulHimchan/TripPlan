@@ -1,4 +1,4 @@
-# TripPlan API
+# 여담 API
 
 회원가입과 로그인을 제외한 요청에는 `Authorization: Bearer {accessToken}` 헤더를 사용합니다.
 

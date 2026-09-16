@@ -7,27 +7,37 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.powerfulhimchan.tripplan.R
 import com.powerfulhimchan.tripplan.model.*
 import java.time.LocalDate
 
 private val Teal = Color(0xFF26667F)
 private val Sand = Color(0xFFF6F1E9)
+private val Sky = Color(0xFFDFF6FC)
+private val FieldBackground = Color(0xFFF8FBFC)
 
 @Composable
 fun TripApp(viewModel: TripViewModel) {
@@ -61,26 +71,86 @@ private fun AuthScreen(
     var registerMode by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
-        Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("TripPlan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Teal)
-                Text(if (registerMode) "이메일로 회원가입" else "이메일로 로그인", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(email, { email = it }, label = { Text("이메일 주소") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(
-                    password, { password = it }, label = { Text("비밀번호 (8자 이상)") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                )
-                Button(
-                    onClick = { if (registerMode) onRegister(email, password) else onLogin(email, password) },
-                    enabled = !loading && email.isNotBlank() && password.length >= 8,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (registerMode) "가입하기" else "로그인") }
-                TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text(if (registerMode) "이미 회원인가요? 로그인" else "처음인가요? 회원가입")
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Teal,
+        unfocusedBorderColor = Color(0xFFD9E4E8),
+        focusedContainerColor = FieldBackground,
+        unfocusedContainerColor = FieldBackground,
+    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Sky, Color(0xFFF4FBFD), Color.White))),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.login_hero),
+                contentDescription = "여행 가방과 지구본 일러스트",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.8f),
+                contentScale = ContentScale.Fit,
+            )
+            Text(
+                stringResource(R.string.app_name),
+                fontSize = 42.sp,
+                lineHeight = 48.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Teal,
+            )
+            Text(
+                stringResource(R.string.app_tagline),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color(0xFF5E7680),
+            )
+            Spacer(Modifier.height(22.dp))
+            Card(
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        if (registerMode) "이메일로 회원가입" else "이메일로 로그인",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    OutlinedTextField(
+                        email,
+                        { email = it },
+                        label = { Text("이메일 주소") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = fieldColors,
+                    )
+                    OutlinedTextField(
+                        password, { password = it }, label = { Text("비밀번호 (8자 이상)") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = fieldColors,
+                    )
+                    Button(
+                        onClick = { if (registerMode) onRegister(email, password) else onLogin(email, password) },
+                        enabled = !loading && email.isNotBlank() && password.length >= 8,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                    ) { Text(if (registerMode) "가입하기" else "로그인") }
+                    TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(if (registerMode) "이미 회원인가요? 로그인" else "처음인가요? 회원가입")
+                    }
                 }
             }
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
@@ -99,7 +169,7 @@ private fun TripListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Column { Text("TripPlan", fontWeight = FontWeight.Bold); Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall) } },
+                title = { Column { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold); Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall) } },
                 actions = {
                     TextButton(onClick = { showInvitations = true }) { Text("받은 초대 ${state.invitations.size}") }
                     TextButton(onClick = onLogout) { Text("로그아웃") }
