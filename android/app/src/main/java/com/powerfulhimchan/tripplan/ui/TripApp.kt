@@ -2,8 +2,10 @@
 
 package com.powerfulhimchan.tripplan.ui
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.R
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.delay
@@ -73,6 +76,8 @@ fun TripApp(viewModel: TripViewModel) {
     ) {
         Surface(Modifier.fillMaxSize()) {
             when {
+                state.versionChecking -> VersionCheckScreen()
+                state.requiredUpdate != null -> ForceUpdateScreen(state.requiredUpdate)
                 !state.authenticated -> AuthScreen(state.loading, viewModel::login, viewModel::register)
                 state.selected == null -> TripListScreen(
                     state, viewModel::select, viewModel::createTrip, viewModel::logout,
@@ -86,6 +91,115 @@ fun TripApp(viewModel: TripViewModel) {
             }
             if (state.loading) LoadingOverlay()
             state.error?.let { ErrorSnackbar(it) }
+        }
+    }
+}
+
+@Composable
+private fun VersionCheckScreen() {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(R.drawable.login_hero),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth(0.72f).aspectRatio(1.8f),
+                contentScale = ContentScale.Fit,
+            )
+            Text(
+                stringResource(R.string.app_name),
+                fontSize = 36.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Teal,
+            )
+            Spacer(Modifier.height(20.dp))
+            CircularProgressIndicator(color = Coral, strokeWidth = 3.dp)
+            Spacer(Modifier.height(12.dp))
+            Text("사용 가능한 버전을 확인하고 있어요", color = Muted)
+        }
+    }
+}
+
+@Composable
+private fun ForceUpdateScreen(policy: AppVersionResponse) {
+    val context = LocalContext.current
+    BackHandler(enabled = true) {}
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.login_hero),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().aspectRatio(1.8f),
+                contentScale = ContentScale.Fit,
+            )
+            Card(
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("새로운 여담을 만나볼까요?", color = Coral, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "업데이트가 필요해요",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Ink,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        policy.message,
+                        color = Muted,
+                        lineHeight = 22.sp,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Surface(
+                        color = FieldBackground,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text(
+                            "현재 ${BuildConfig.VERSION_NAME} (${policy.currentVersionCode})  ·  " +
+                                "최소 ${policy.minimumVersionCode}",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Muted,
+                        )
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(policy.storeUrl)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                },
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                    ) {
+                        Text("지금 업데이트", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

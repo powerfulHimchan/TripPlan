@@ -1,6 +1,26 @@
 # 여담 API
 
-회원가입과 로그인을 제외한 요청에는 `Authorization: Bearer {accessToken}` 헤더를 사용합니다.
+회원가입, 로그인, 앱 버전 확인을 제외한 요청에는 `Authorization: Bearer {accessToken}` 헤더를 사용합니다.
+
+## Android 앱 버전 확인
+
+`GET /api/v1/app-version/android?currentVersionCode=2`
+
+인증 없이 호출하며, `forceUpdateAt`이 지났고 현재 버전이 `minimumVersionCode`보다 낮으면 `updateRequired`가 `true`입니다.
+
+```json
+{
+  "platform": "ANDROID",
+  "currentVersionCode": 2,
+  "minimumVersionCode": 5,
+  "latestVersionCode": 5,
+  "updateAvailable": true,
+  "updateRequired": true,
+  "forceUpdateAt": "2026-10-01T00:00:00Z",
+  "storeUrl": "https://play.google.com/store/apps/details?id=com.powerfulhimchan.tripplan",
+  "message": "안정적인 여담 사용을 위해 앱을 업데이트해주세요."
+}
+```
 
 ## 회원가입
 

@@ -24,7 +24,7 @@ class SecurityConfig {
         .csrf { it.disable() }
         .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
         .authorizeHttpRequests {
-            it.requestMatchers("/api/v1/auth/**", "/error").permitAll()
+            it.requestMatchers("/api/v1/auth/**", "/api/v1/app-version/**", "/error").permitAll()
                 .anyRequest().authenticated()
         }
         .oauth2ResourceServer { it.jwt {} }
@@ -47,4 +47,3 @@ class SecurityConfig {
         .macAlgorithm(MacAlgorithm.HS256)
         .build()
 }
-

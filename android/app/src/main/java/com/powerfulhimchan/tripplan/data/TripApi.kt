@@ -6,6 +6,11 @@ import okhttp3.ResponseBody
 import retrofit2.http.*
 
 interface TripApi {
+    @GET("api/v1/app-version/android")
+    suspend fun getAndroidVersionPolicy(
+        @Query("currentVersionCode") currentVersionCode: Int,
+    ): AppVersionResponse
+
     @POST("api/v1/auth/register")
     suspend fun register(@Body request: EmailPasswordRequest): AuthResponse
 

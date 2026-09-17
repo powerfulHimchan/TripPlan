@@ -16,8 +16,8 @@ android {
         applicationId = "com.powerfulhimchan.tripplan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
     }
 
@@ -55,4 +55,3 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-messaging")
 }
-

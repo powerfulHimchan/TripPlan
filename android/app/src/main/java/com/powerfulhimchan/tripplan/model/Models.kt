@@ -70,3 +70,15 @@ data class Invitation(
     val createdAt: String,
 )
 data class TripMember(val userId: String, val email: String, val owner: Boolean)
+
+data class AppVersionResponse(
+    val platform: String,
+    val currentVersionCode: Int,
+    val minimumVersionCode: Int,
+    val latestVersionCode: Int,
+    val updateAvailable: Boolean,
+    val updateRequired: Boolean,
+    val forceUpdateAt: String?,
+    val storeUrl: String,
+    val message: String,
+)

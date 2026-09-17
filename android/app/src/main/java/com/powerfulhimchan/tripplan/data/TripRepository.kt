@@ -31,6 +31,7 @@ class TripRepository(private val tokenStore: TokenStore) {
     val isLoggedIn get() = tokenStore.isLoggedIn
     val email get() = tokenStore.email
 
+    suspend fun appVersion(currentVersionCode: Int) = api.getAndroidVersionPolicy(currentVersionCode)
     suspend fun register(email: String, password: String) = api.register(EmailPasswordRequest(email, password)).also(tokenStore::save)
     suspend fun login(email: String, password: String) = api.login(EmailPasswordRequest(email, password)).also(tokenStore::save)
     fun logout() = tokenStore.clear()

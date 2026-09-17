@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.data.TokenStore
 import com.powerfulhimchan.tripplan.data.ReviewPhotoUpload
 import com.powerfulhimchan.tripplan.data.TripRepository
@@ -15,6 +16,8 @@ import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 
 data class TripUiState(
+    val versionChecking: Boolean = false,
+    val requiredUpdate: AppVersionResponse? = null,
     val authenticated: Boolean = false,
     val email: String? = null,
     val trips: List<Trip> = emptyList(),
@@ -30,13 +33,17 @@ data class TripUiState(
 class TripViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TripRepository(TokenStore(application))
     private val _state = MutableStateFlow(
-        TripUiState(authenticated = repository.isLoggedIn, email = repository.email)
+        TripUiState(
+            versionChecking = true,
+            authenticated = repository.isLoggedIn,
+            email = repository.email,
+        )
     )
     val state = _state.asStateFlow()
     private var deviceToken: String? = null
 
     init {
-        if (repository.isLoggedIn) refresh()
+        checkAppVersion()
     }
 
     fun login(email: String, password: String) = authenticate { repository.login(email, password) }
@@ -46,6 +53,17 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         repository.logout()
         _state.value = TripUiState()
+    }
+
+    private fun checkAppVersion() {
+        viewModelScope.launch {
+            val policy = runCatching { repository.appVersion(BuildConfig.VERSION_CODE) }.getOrNull()
+            _state.value = _state.value.copy(
+                versionChecking = false,
+                requiredUpdate = policy?.takeIf { it.updateRequired },
+            )
+            if (policy?.updateRequired != true && repository.isLoggedIn) refresh()
+        }
     }
 
     fun refresh() = launch {
