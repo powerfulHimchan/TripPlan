@@ -36,14 +36,22 @@ class TripService(
     @Transactional
     fun addItem(userId: String, tripId: UUID, request: CreateItineraryItemRequest): ItineraryItemResponse {
         val trip = accessibleTrip(userId, tripId)
-        val localDate = request.scheduledAt.atZone(ZoneId.of(trip.timezone)).toLocalDate()
-        require(!localDate.isBefore(trip.startDate) && !localDate.isAfter(trip.endDate)) { "일정 시각은 여행 기간 안이어야 합니다." }
+        val endsAt = request.endsAt ?: request.scheduledAt.plusSeconds(3600)
+        require(endsAt.isAfter(request.scheduledAt)) { "일정 종료 시각은 시작 시각보다 늦어야 합니다." }
+        val zoneId = ZoneId.of(trip.timezone)
+        val startDate = request.scheduledAt.atZone(zoneId).toLocalDate()
+        val endDate = endsAt.atZone(zoneId).toLocalDate()
+        require(
+            !startDate.isBefore(trip.startDate) && !startDate.isAfter(trip.endDate) &&
+                !endDate.isBefore(trip.startDate) && !endDate.isAfter(trip.endDate)
+        ) { "일정 시작과 종료 시각은 여행 기간 안이어야 합니다." }
         return items.save(ItineraryItem(
             tripId = tripId,
             title = request.title.trim(),
             place = request.place?.trim()?.ifBlank { null },
             memo = request.memo?.trim()?.ifBlank { null },
             scheduledAt = request.scheduledAt,
+            endsAt = endsAt,
             notificationEnabled = request.notificationEnabled,
             notificationMinutesBefore = request.notificationMinutesBefore,
         )).toResponse()
@@ -74,6 +82,6 @@ class TripService(
     )
 
     private fun ItineraryItem.toResponse() = ItineraryItemResponse(
-        id, title, place, memo, scheduledAt, notificationEnabled, notificationMinutesBefore
+        id, title, place, memo, scheduledAt, endsAt, notificationEnabled, notificationMinutesBefore
     )
 }

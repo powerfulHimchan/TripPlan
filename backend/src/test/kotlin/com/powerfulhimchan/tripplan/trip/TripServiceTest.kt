@@ -15,7 +15,26 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
     fun `여행과 일정을 생성한다`() {
         val trip = service.create("user-1", CreateTripRequest("제주 여행", "제주", LocalDate.of(2027, 5, 1), LocalDate.of(2027, 5, 3), "Asia/Seoul"))
         val item = service.addItem("user-1", trip.id, CreateItineraryItemRequest("공항 도착", "제주공항", scheduledAt = Instant.parse("2027-05-01T01:00:00Z")))
+        assertThat(item.endsAt).isEqualTo(Instant.parse("2027-05-01T02:00:00Z"))
         assertThat(service.get("user-1", trip.id).items).containsExactly(item)
+    }
+
+    @Test
+    fun `일정 종료 시각은 시작 시각보다 늦어야 한다`() {
+        val trip = service.create("user-1", CreateTripRequest("부산 여행", "부산", LocalDate.of(2027, 6, 1), LocalDate.of(2027, 6, 2), "Asia/Seoul"))
+
+        assertThatThrownBy {
+            service.addItem(
+                "user-1",
+                trip.id,
+                CreateItineraryItemRequest(
+                    title = "광안리",
+                    scheduledAt = Instant.parse("2027-06-01T03:00:00Z"),
+                    endsAt = Instant.parse("2027-06-01T02:00:00Z"),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("종료 시각")
     }
 
     @Test
@@ -25,4 +44,3 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
 }
-

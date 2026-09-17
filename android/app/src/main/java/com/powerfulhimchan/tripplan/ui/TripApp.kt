@@ -33,7 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.powerfulhimchan.tripplan.R
 import com.powerfulhimchan.tripplan.model.*
+import kotlinx.coroutines.delay
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val Teal = Color(0xFF26667F)
 private val Sky = Color(0xFFDFF6FC)
@@ -327,10 +332,23 @@ private fun TripDetailScreen(
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
-    val tripFinished = !LocalDate.now().isBefore(LocalDate.parse(trip.endDate))
+    val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(trip.id) {
+        while (true) {
+            now = Instant.now()
+            delay(60_000)
+        }
+    }
+    val tripFinished = !LocalDate.now(zoneId).isBefore(LocalDate.parse(trip.endDate))
     val canInvite = state.members.any { it.owner && it.email == state.email }
+    val activeItem = trip.items.firstOrNull { scheduleProgress(it, now) == ScheduleProgress.IN_PROGRESS }
+    val timelineGroups = remember(trip.items, trip.timezone) {
+        trip.items.groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
+    }
     var showItem by remember { mutableStateOf(false) }
     var showSharing by remember { mutableStateOf(false) }
+    var showTimeline by remember(trip.id) { mutableStateOf(false) }
     Box(
         Modifier
             .fillMaxSize()
@@ -379,8 +397,43 @@ private fun TripDetailScreen(
                     }
                 }
                 item {
-                    Text(if (tripFinished) "여행의 순간들" else "다가오는 일정", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    Text(if (tripFinished) "계획마다 기억에 남은 이야기를 기록해보세요." else "알림을 켜두면 계획한 시간에 알려드려요.", color = Muted)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!showTimeline) {
+                            Button(onClick = { showTimeline = false }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("일정 카드") }
+                            OutlinedButton(onClick = { showTimeline = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("전체 타임라인") }
+                        } else {
+                            OutlinedButton(onClick = { showTimeline = false }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("일정 카드") }
+                            Button(onClick = { showTimeline = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("전체 타임라인") }
+                        }
+                    }
+                }
+                activeItem?.let { current ->
+                    item(key = "active-${current.id}") {
+                        Surface(shape = RoundedCornerShape(20.dp), color = Coral, shadowElevation = 4.dp) {
+                            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("지금 진행 중", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                    Text(current.title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                                    Text(itineraryTimeRange(current, zoneId), color = Color.White.copy(alpha = 0.9f))
+                                }
+                                Text("NOW", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text(
+                        if (showTimeline) "여행 전체 타임라인" else if (tripFinished) "여행의 순간들" else "다가오는 일정",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Ink,
+                    )
+                    Text(
+                        if (showTimeline) "날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요."
+                        else if (tripFinished) "계획마다 기억에 남은 이야기를 기록해보세요."
+                        else "알림을 켜두면 계획한 시간에 알려드려요.",
+                        color = Muted,
+                    )
                 }
                 if (trip.items.isEmpty()) item {
                     Card(
@@ -395,13 +448,34 @@ private fun TripDetailScreen(
                         }
                     }
                 }
-                items(trip.items, key = { it.id }) { item ->
-                    ItineraryCard(
-                        item, onToggle, tripFinished, state.reviews[item.id],
-                        state.reviewPhotoBytes,
-                        { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
-                        { photoId -> onDeleteReviewPhoto(item.id, photoId) },
-                    )
+                if (showTimeline) {
+                    timelineGroups.forEach { (date, dayItems) ->
+                        item(key = "date-$date") {
+                            Text(
+                                date.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)),
+                                color = Teal,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        items(dayItems, key = { "timeline-${it.id}" }) { timelineItem ->
+                            TimelineItemCard(
+                                item = timelineItem,
+                                zoneId = zoneId,
+                                now = now,
+                                isLast = timelineItem.id == dayItems.last().id,
+                            )
+                        }
+                    }
+                } else {
+                    items(trip.items, key = { it.id }) { item ->
+                        ItineraryCard(
+                            item, zoneId, now, onToggle, tripFinished, state.reviews[item.id],
+                            state.reviewPhotoBytes,
+                            { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
+                            { photoId -> onDeleteReviewPhoto(item.id, photoId) },
+                        )
+                    }
                 }
             }
         }
@@ -454,9 +528,77 @@ private fun SharingDialog(members: List<TripMember>, canInvite: Boolean, onDismi
     )
 }
 
+private enum class ScheduleProgress(val label: String) {
+    UPCOMING("예정"),
+    IN_PROGRESS("진행 중"),
+    COMPLETED("완료"),
+}
+
+private fun scheduleProgress(item: ItineraryItem, now: Instant): ScheduleProgress {
+    val startsAt = Instant.parse(item.scheduledAt)
+    val endsAt = Instant.parse(item.endsAt)
+    return when {
+        now.isBefore(startsAt) -> ScheduleProgress.UPCOMING
+        now.isBefore(endsAt) -> ScheduleProgress.IN_PROGRESS
+        else -> ScheduleProgress.COMPLETED
+    }
+}
+
+private fun itineraryTimeRange(item: ItineraryItem, zoneId: ZoneId): String {
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    val startsAt = Instant.parse(item.scheduledAt).atZone(zoneId)
+    val endsAt = Instant.parse(item.endsAt).atZone(zoneId)
+    return "${startsAt.format(formatter)} — ${endsAt.format(formatter)}"
+}
+
+@Composable
+private fun TimelineItemCard(
+    item: ItineraryItem,
+    zoneId: ZoneId,
+    now: Instant,
+    isLast: Boolean,
+) {
+    val progress = scheduleProgress(item, now)
+    val accentColor = when (progress) {
+        ScheduleProgress.UPCOMING -> Teal
+        ScheduleProgress.IN_PROGRESS -> Coral
+        ScheduleProgress.COMPLETED -> Leaf
+    }
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Column(Modifier.width(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(16.dp).clip(RoundedCornerShape(50)).background(accentColor))
+            if (!isLast) Box(Modifier.width(2.dp).weight(1f).background(Border))
+        }
+        Card(
+            modifier = Modifier.weight(1f).padding(bottom = if (isLast) 0.dp else 6.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = if (progress == ScheduleProgress.IN_PROGRESS) Color(0xFFFFF1EE) else Color.White),
+            border = BorderStroke(if (progress == ScheduleProgress.IN_PROGRESS) 2.dp else 1.dp, if (progress == ScheduleProgress.IN_PROGRESS) Coral else Border),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 4.dp else 1.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(itineraryTimeRange(item, zoneId), color = accentColor, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Surface(shape = RoundedCornerShape(50), color = accentColor.copy(alpha = 0.14f)) {
+                        Text(progress.label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = accentColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Ink)
+                item.place?.let { Text("장소 · $it", color = Muted, style = MaterialTheme.typography.bodySmall) }
+                item.memo?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+                if (progress == ScheduleProgress.IN_PROGRESS) {
+                    Text("현재 진행 중인 일정입니다", color = Coral, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ItineraryCard(
     item: ItineraryItem,
+    zoneId: ZoneId,
+    now: Instant,
     onToggle: (ItineraryItem, Boolean) -> Unit,
     reviewEnabled: Boolean,
     review: Review?,
@@ -464,6 +606,13 @@ private fun ItineraryCard(
     onSaveReview: (Int, String, List<Uri>) -> Unit,
     onDeletePhoto: (String) -> Unit,
 ) {
+    val progress = scheduleProgress(item, now)
+    val dateLabel = Instant.parse(item.scheduledAt).atZone(zoneId).format(DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN))
+    val progressColor = when (progress) {
+        ScheduleProgress.UPCOMING -> Teal
+        ScheduleProgress.IN_PROGRESS -> Coral
+        ScheduleProgress.COMPLETED -> Leaf
+    }
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -476,8 +625,12 @@ private fun ItineraryCard(
                 Box(Modifier.size(width = 5.dp, height = 54.dp).clip(RoundedCornerShape(50)).background(if (item.notificationEnabled) Coral else Border))
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
+                    Surface(shape = RoundedCornerShape(50), color = progressColor.copy(alpha = 0.14f)) {
+                        Text(progress.label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp), color = progressColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(5.dp))
                     Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(item.scheduledAt.replace("T", " ").take(16), style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    Text("$dateLabel · ${itineraryTimeRange(item, zoneId)}", style = MaterialTheme.typography.bodyMedium, color = Muted)
                     item.place?.let { Text("장소 · $it", color = Muted, style = MaterialTheme.typography.bodySmall) }
                     if (item.notificationEnabled) {
                         Text("${item.notificationMinutesBefore}분 전 알려드려요", color = Coral, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -520,15 +673,26 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
     var title by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var memo by remember { mutableStateOf("") }
-    var at by remember { mutableStateOf("${trip.startDate}T09:00:00+09:00") }
+    var startsAt by remember { mutableStateOf("${trip.startDate}T09:00:00+09:00") }
+    var endsAt by remember { mutableStateOf("${trip.startDate}T10:00:00+09:00") }
     var before by remember { mutableStateOf("30") }
-    InputDialog("일정 추가", onDismiss, title.isNotBlank(), {
-        onSave(CreateItemRequest(title, place.ifBlank { null }, memo.ifBlank { null }, at, notificationMinutesBefore = before.toIntOrNull() ?: 0))
+    InputDialog("일정 추가", onDismiss, title.isNotBlank() && startsAt.isNotBlank() && endsAt.isNotBlank(), {
+        onSave(
+            CreateItemRequest(
+                title = title,
+                place = place.ifBlank { null },
+                memo = memo.ifBlank { null },
+                scheduledAt = startsAt,
+                endsAt = endsAt,
+                notificationMinutesBefore = before.toIntOrNull() ?: 0,
+            ),
+        )
     }) {
         Field(title, { title = it }, "일정 이름")
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
-        Field(at, { at = it }, "시각 (ISO-8601)")
+        Field(startsAt, { startsAt = it }, "시작 시각 (ISO-8601)")
+        Field(endsAt, { endsAt = it }, "종료 시각 (ISO-8601)")
         Field(before, { before = it }, "몇 분 전 알림")
     }
 }

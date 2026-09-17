@@ -29,6 +29,7 @@ class ItineraryItem(
     @Column(length = 200) var place: String? = null,
     @Column(columnDefinition = "TEXT") var memo: String? = null,
     @Column(nullable = false) var scheduledAt: Instant,
+    @Column(nullable = false) var endsAt: Instant = scheduledAt.plusSeconds(3600),
     @Column(nullable = false) var notificationEnabled: Boolean = true,
     @Column(nullable = false) var notificationMinutesBefore: Int = 0,
     var notificationSentAt: Instant? = null,
@@ -38,4 +39,3 @@ class ItineraryItem(
 
     fun notificationDueAt(): Instant = scheduledAt.minusSeconds(notificationMinutesBefore * 60L)
 }
-

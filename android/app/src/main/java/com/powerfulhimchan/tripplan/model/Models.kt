@@ -16,6 +16,7 @@ data class ItineraryItem(
     val place: String?,
     val memo: String?,
     val scheduledAt: String,
+    val endsAt: String,
     val notificationEnabled: Boolean,
     val notificationMinutesBefore: Int,
 )
@@ -33,6 +34,7 @@ data class CreateItemRequest(
     val place: String?,
     val memo: String?,
     val scheduledAt: String,
+    val endsAt: String,
     val notificationEnabled: Boolean = true,
     val notificationMinutesBefore: Int = 30,
 )

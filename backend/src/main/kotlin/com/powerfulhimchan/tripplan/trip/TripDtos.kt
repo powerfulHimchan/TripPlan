@@ -17,6 +17,7 @@ data class CreateItineraryItemRequest(
     @field:Size(max = 200) val place: String? = null,
     val memo: String? = null,
     val scheduledAt: Instant,
+    val endsAt: Instant? = null,
     val notificationEnabled: Boolean = true,
     @field:Min(0) @field:Max(10080) val notificationMinutesBefore: Int = 0,
 )
@@ -32,6 +33,7 @@ data class ItineraryItemResponse(
     val place: String?,
     val memo: String?,
     val scheduledAt: Instant,
+    val endsAt: Instant,
     val notificationEnabled: Boolean,
     val notificationMinutesBefore: Int,
 )
@@ -45,4 +47,3 @@ data class TripResponse(
     val timezone: String,
     val items: List<ItineraryItemResponse>,
 )
-

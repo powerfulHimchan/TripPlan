@@ -42,6 +42,7 @@
   "place": "도톤보리",
   "memo": "예약번호 확인",
   "scheduledAt": "2027-05-01T09:00:00Z",
+  "endsAt": "2027-05-01T11:00:00Z",
   "notificationEnabled": true,
   "notificationMinutesBefore": 30
 }
