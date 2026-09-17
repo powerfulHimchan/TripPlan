@@ -56,6 +56,7 @@ private val Border = Color(0xFFDCE8EC)
 @Composable
 fun TripApp(viewModel: TripViewModel) {
     val state by viewModel.state.collectAsState()
+    val requiredUpdate = state.requiredUpdate
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Teal,
@@ -77,7 +78,7 @@ fun TripApp(viewModel: TripViewModel) {
         Surface(Modifier.fillMaxSize()) {
             when {
                 state.versionChecking -> VersionCheckScreen()
-                state.requiredUpdate != null -> ForceUpdateScreen(state.requiredUpdate)
+                requiredUpdate != null -> ForceUpdateScreen(requiredUpdate)
                 !state.authenticated -> AuthScreen(state.loading, viewModel::login, viewModel::register)
                 state.selected == null -> TripListScreen(
                     state, viewModel::select, viewModel::createTrip, viewModel::logout,
