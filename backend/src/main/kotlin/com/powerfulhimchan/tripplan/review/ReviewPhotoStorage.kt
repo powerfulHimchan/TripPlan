@@ -1,6 +1,7 @@
 package com.powerfulhimchan.tripplan.review
 
 import jakarta.persistence.EntityNotFoundException
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.Resource
 import org.springframework.core.io.UrlResource
@@ -10,11 +11,18 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
+interface ReviewPhotoStorage {
+    fun store(storedName: String, file: MultipartFile)
+    fun load(storedName: String): Resource
+    fun delete(storedName: String)
+}
+
 @Component
-class ReviewPhotoStorage(@Value("\${tripplan.review.upload-dir:uploads/reviews}") uploadDir: String) {
+@ConditionalOnExpression("'\${REVIEW_STORAGE:local}' == 'local'")
+class LocalReviewPhotoStorage(@Value("\${tripplan.review.upload-dir:uploads/reviews}") uploadDir: String) : ReviewPhotoStorage {
     private val root: Path = Path.of(uploadDir).toAbsolutePath().normalize().also(Files::createDirectories)
 
-    fun store(storedName: String, file: MultipartFile) {
+    override fun store(storedName: String, file: MultipartFile) {
         val target = root.resolve(storedName).normalize()
         require(target.parent == root) { "올바르지 않은 사진 경로입니다." }
         file.inputStream.use { input ->
@@ -22,7 +30,7 @@ class ReviewPhotoStorage(@Value("\${tripplan.review.upload-dir:uploads/reviews}"
         }
     }
 
-    fun load(storedName: String): Resource {
+    override fun load(storedName: String): Resource {
         val target = root.resolve(storedName).normalize()
         if (target.parent != root || !Files.isRegularFile(target)) {
             throw EntityNotFoundException("사진 파일을 찾을 수 없습니다.")
@@ -30,7 +38,7 @@ class ReviewPhotoStorage(@Value("\${tripplan.review.upload-dir:uploads/reviews}"
         return UrlResource(target.toUri())
     }
 
-    fun delete(storedName: String) {
+    override fun delete(storedName: String) {
         val target = root.resolve(storedName).normalize()
         if (target.parent == root) Files.deleteIfExists(target)
     }

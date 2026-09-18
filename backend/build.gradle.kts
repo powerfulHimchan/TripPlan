@@ -26,6 +26,8 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.google.firebase:firebase-admin:9.4.3")
+    implementation(platform("software.amazon.awssdk:bom:2.25.60"))
+    implementation("software.amazon.awssdk:s3")
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
