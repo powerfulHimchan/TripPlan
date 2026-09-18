@@ -18,7 +18,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
-import software.amazon.awssdk.services.s3.model.ServerSideEncryption
+import java.net.URI
 
 @Component
 @ConditionalOnExpression("'\${REVIEW_STORAGE:local}' == 's3'")
@@ -39,7 +39,6 @@ class S3ReviewPhotoStorage(
             .key(objectKey(storedName))
             .contentType(file.contentType)
             .contentLength(file.size)
-            .serverSideEncryption(ServerSideEncryption.AES256)
             .build()
         file.inputStream.use { input ->
             s3.putObject(request, RequestBody.fromInputStream(input, file.size))
@@ -85,9 +84,18 @@ class S3ReviewPhotoStorage(
 @ConditionalOnExpression("'\${REVIEW_STORAGE:local}' == 's3'")
 class S3ReviewPhotoConfig {
     @Bean(destroyMethod = "close")
-    fun reviewPhotoS3Client(@Value("\${AWS_REGION:ap-northeast-2}") region: String): S3Client =
-        S3Client.builder()
+    fun reviewPhotoS3Client(
+        @Value("\${AWS_REGION:ap-northeast-2}") region: String,
+        @Value("\${AWS_S3_ENDPOINT:}") endpoint: String,
+    ): S3Client {
+        val builder = S3Client.builder()
             .region(Region.of(region))
             .credentialsProvider(DefaultCredentialsProvider.create())
-            .build()
+
+        endpoint.trim().takeIf(String::isNotEmpty)?.let {
+            builder.endpointOverride(URI.create(it))
+        }
+
+        return builder.build()
+    }
 }

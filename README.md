@@ -69,10 +69,16 @@ DB_URL=jdbc:postgresql://${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.P
 DB_USERNAME=${{Postgres.PGUSER}}
 DB_PASSWORD=${{Postgres.PGPASSWORD}}
 JWT_SECRET=32바이트 이상의 운영용 랜덤 문자열
-REVIEW_UPLOAD_DIR=/data/reviews
+REVIEW_STORAGE=s3
+AWS_S3_ENDPOINT=${{yeodam-review-photos.ENDPOINT}}
+AWS_REGION=${{yeodam-review-photos.REGION}}
+AWS_S3_BUCKET=${{yeodam-review-photos.BUCKET}}
+AWS_S3_PREFIX=reviews
+AWS_ACCESS_KEY_ID=${{yeodam-review-photos.ACCESS_KEY_ID}}
+AWS_SECRET_ACCESS_KEY=${{yeodam-review-photos.SECRET_ACCESS_KEY}}
 ```
 
-5. 백엔드 서비스에 Volume을 추가하고 Mount Path를 `/data`로 지정합니다.
+5. 같은 프로젝트에 `yeodam-review-photos` Storage Bucket을 추가하고 위 Variable Reference를 연결합니다.
 6. Networking에서 Railway HTTPS 도메인을 생성합니다.
 
 Railway가 제공하는 `PORT` 환경변수는 Spring Boot가 자동으로 사용합니다. Push를 실제 전송하기 전까지 `FCM_ENABLED`는 `false`로 둡니다.
@@ -80,7 +86,7 @@ Railway가 제공하는 `PORT` 환경변수는 Spring Boot가 자동으로 사�
 ## MVP 전제
 
 - 비밀번호는 BCrypt로 저장하고 API 인증은 Bearer JWT를 사용합니다.
-- 후기 사진은 기본적으로 `uploads/reviews`에 저장됩니다. 운영 환경에서는 `REVIEW_UPLOAD_DIR`을 영속 볼륨으로 지정하고, 서비스 규모가 커지면 S3 같은 오브젝트 스토리지로 교체하는 것을 권장합니다.
+- 후기 사진은 로컬 개발에서는 `uploads/reviews`, Railway 운영 환경에서는 S3 호환 Storage Bucket에 저장합니다.
 - 운영 전 Push 재시도/실패 큐, 이메일 인증, 비밀번호 재설정 기능을 추가해야 합니다.
 - 일정 알림은 서버 기준 1분 간격으로 확인하며 중복 발송 방지 시각을 DB에 기록합니다.
 
