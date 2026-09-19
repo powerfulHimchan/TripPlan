@@ -447,6 +447,7 @@ private fun TripDetailScreen(
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
+    BackHandler(onBack = onBack)
     val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(trip.id) {
@@ -455,9 +456,9 @@ private fun TripDetailScreen(
             delay(60_000)
         }
     }
-    val tripFinished = !LocalDate.now(zoneId).isBefore(LocalDate.parse(trip.endDate))
     val canInvite = state.members.any { it.owner && it.email == state.email }
     val activeItem = trip.items.firstOrNull { scheduleProgress(it, now) == ScheduleProgress.IN_PROGRESS }
+    val hasCompletedItem = trip.items.any { scheduleProgress(it, now) == ScheduleProgress.COMPLETED }
     val timelineGroups = remember(trip.items, trip.timezone) {
         trip.items.groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
     }
@@ -538,14 +539,14 @@ private fun TripDetailScreen(
                 }
                 item {
                     Text(
-                        if (showTimeline) "여행 전체 타임라인" else if (tripFinished) "여행의 순간들" else "다가오는 일정",
+                        if (showTimeline) "여행 전체 타임라인" else if (hasCompletedItem) "여행의 순간들" else "다가오는 일정",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = Ink,
                     )
                     Text(
                         if (showTimeline) "날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요."
-                        else if (tripFinished) "계획마다 기억에 남은 이야기를 기록해보세요."
+                        else if (hasCompletedItem) "종료된 일정마다 기억에 남은 이야기를 기록해보세요."
                         else "알림을 켜두면 계획한 시간에 알려드려요.",
                         color = Muted,
                     )
@@ -585,7 +586,9 @@ private fun TripDetailScreen(
                 } else {
                     items(trip.items, key = { it.id }) { item ->
                         ItineraryCard(
-                            item, zoneId, now, onToggle, tripFinished, state.reviews[item.id],
+                            item, zoneId, now, onToggle,
+                            scheduleProgress(item, now) == ScheduleProgress.COMPLETED,
+                            state.reviews[item.id],
                             state.reviewPhotoBytes,
                             { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
                             { photoId -> onDeleteReviewPhoto(item.id, photoId) },
@@ -771,8 +774,9 @@ private fun ItineraryCard(
 private fun CreateTripDialog(onDismiss: () -> Unit, onSave: (CreateTripRequest) -> Unit) {
     var title by remember { mutableStateOf("") }
     var destination by remember { mutableStateOf("") }
-    var start by remember { mutableStateOf(LocalDate.now().toString()) }
-    var end by remember { mutableStateOf(LocalDate.now().plusDays(2).toString()) }
+    val tomorrow = remember { LocalDate.now().plusDays(1) }
+    var start by remember { mutableStateOf(tomorrow.toString()) }
+    var end by remember { mutableStateOf(tomorrow.plusDays(1).toString()) }
     InputDialog("새 여행", onDismiss, title.isNotBlank() && destination.isNotBlank(), {
         onSave(CreateTripRequest(title, destination, start, end))
     }) {
@@ -785,11 +789,12 @@ private fun CreateTripDialog(onDismiss: () -> Unit, onSave: (CreateTripRequest) 
 
 @Composable
 private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItemRequest) -> Unit) {
+    val initialWindow = remember(trip.id, trip.items) { nextItineraryWindow(trip) }
     var title by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var memo by remember { mutableStateOf("") }
-    var startsAt by remember { mutableStateOf("${trip.startDate}T09:00:00+09:00") }
-    var endsAt by remember { mutableStateOf("${trip.startDate}T10:00:00+09:00") }
+    var startsAt by remember { mutableStateOf(initialWindow.first) }
+    var endsAt by remember { mutableStateOf(initialWindow.second) }
     var before by remember { mutableStateOf("30") }
     InputDialog("일정 추가", onDismiss, title.isNotBlank() && startsAt.isNotBlank() && endsAt.isNotBlank(), {
         onSave(
@@ -810,6 +815,16 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
         Field(endsAt, { endsAt = it }, "종료 시각 (ISO-8601)")
         Field(before, { before = it }, "몇 분 전 알림")
     }
+}
+
+private fun nextItineraryWindow(trip: Trip): Pair<String, String> {
+    val zoneId = ZoneId.of(trip.timezone)
+    val startsAt = trip.items
+        .maxByOrNull { Instant.parse(it.scheduledAt) }
+        ?.let { Instant.parse(it.endsAt).atZone(zoneId) }
+        ?: LocalDate.parse(trip.startDate).atTime(9, 0).atZone(zoneId)
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX")
+    return startsAt.format(formatter) to startsAt.plusHours(1).format(formatter)
 }
 
 @Composable
@@ -928,15 +943,22 @@ private fun InputDialog(title: String, onDismiss: () -> Unit, enabled: Boolean, 
 
 @Composable
 private fun Field(value: String, onChange: (String) -> Unit, label: String) {
-    OutlinedTextField(
-        value,
-        onChange,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = false,
-        shape = RoundedCornerShape(16.dp),
-        colors = yeodamFieldColors(),
-    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = Muted,
+        )
+        OutlinedTextField(
+            value,
+            onChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = false,
+            shape = RoundedCornerShape(16.dp),
+            colors = yeodamFieldColors(),
+        )
+    }
 }
 
 @Composable
