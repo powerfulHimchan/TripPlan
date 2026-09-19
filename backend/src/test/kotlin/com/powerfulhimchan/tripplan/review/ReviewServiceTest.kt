@@ -66,4 +66,46 @@ class ReviewServiceTest @Autowired constructor(
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("최대 5장")
     }
+
+    @Test
+    fun `여행이 진행 중이어도 종료된 일정에는 후기를 작성할 수 있다`() {
+        val today = LocalDate.now()
+        val trip = tripService.create(
+            "user-1",
+            CreateTripRequest("진행 중인 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
+        )
+        val item = tripService.addItem(
+            "user-1", trip.id,
+            CreateItineraryItemRequest(
+                "지난 일정",
+                scheduledAt = Instant.now().minusSeconds(7_200),
+                endsAt = Instant.now().minusSeconds(3_600),
+            ),
+        )
+
+        val review = reviewService.save("user-1", item.id, SaveReviewRequest(5, "여행 중 바로 남긴 후기"))
+
+        assertThat(review.content).isEqualTo("여행 중 바로 남긴 후기")
+    }
+
+    @Test
+    fun `종료되지 않은 일정에는 후기를 작성할 수 없다`() {
+        val today = LocalDate.now()
+        val trip = tripService.create(
+            "user-1",
+            CreateTripRequest("진행 중인 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
+        )
+        val item = tripService.addItem(
+            "user-1", trip.id,
+            CreateItineraryItemRequest(
+                "다가오는 일정",
+                scheduledAt = Instant.now().plusSeconds(3_600),
+                endsAt = Instant.now().plusSeconds(7_200),
+            ),
+        )
+
+        assertThatThrownBy { reviewService.save("user-1", item.id, SaveReviewRequest(5, "미리 쓴 후기")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("일정 종료 후")
+    }
 }
