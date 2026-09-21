@@ -19,6 +19,7 @@ data class ItineraryItem(
     val endsAt: String,
     val notificationEnabled: Boolean,
     val notificationMinutesBefore: Int,
+    val category: String = "OTHER",
 )
 
 data class CreateTripRequest(
@@ -37,6 +38,7 @@ data class CreateItemRequest(
     val endsAt: String,
     val notificationEnabled: Boolean = true,
     val notificationMinutesBefore: Int = 30,
+    val category: String = "OTHER",
 )
 
 data class UpdateNotificationRequest(val enabled: Boolean, val minutesBefore: Int)

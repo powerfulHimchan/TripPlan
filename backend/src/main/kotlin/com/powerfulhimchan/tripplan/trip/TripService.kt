@@ -46,6 +46,7 @@ class TripService(
             title = request.title.trim(),
             place = request.place?.trim()?.ifBlank { null },
             memo = request.memo?.trim()?.ifBlank { null },
+            category = request.category,
             scheduledAt = request.scheduledAt,
             endsAt = endsAt,
             notificationEnabled = request.notificationEnabled,
@@ -68,6 +69,7 @@ class TripService(
         item.title = request.title.trim()
         item.place = request.place?.trim()?.ifBlank { null }
         item.memo = request.memo?.trim()?.ifBlank { null }
+        item.category = request.category
         item.scheduledAt = request.scheduledAt
         item.endsAt = request.endsAt
         item.notificationEnabled = request.notificationEnabled
@@ -112,6 +114,14 @@ class TripService(
     )
 
     private fun ItineraryItem.toResponse() = ItineraryItemResponse(
-        id, title, place, memo, scheduledAt, endsAt, notificationEnabled, notificationMinutesBefore
+        id = id,
+        title = title,
+        place = place,
+        memo = memo,
+        scheduledAt = scheduledAt,
+        endsAt = endsAt,
+        notificationEnabled = notificationEnabled,
+        notificationMinutesBefore = notificationMinutesBefore,
+        category = category,
     )
 }

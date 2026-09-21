@@ -4,6 +4,19 @@ import jakarta.persistence.*
 import java.time.*
 import java.util.UUID
 
+enum class ItineraryCategory {
+    ACCOMMODATION,
+    TRANSPORTATION,
+    SIGHTSEEING,
+    FOOD,
+    CAFE,
+    ACTIVITY,
+    SHOPPING,
+    CULTURE,
+    REST,
+    OTHER,
+}
+
 @Entity
 @Table(name = "trips")
 class Trip(
@@ -28,6 +41,9 @@ class ItineraryItem(
     @Column(nullable = false, length = 120) var title: String,
     @Column(length = 200) var place: String? = null,
     @Column(columnDefinition = "TEXT") var memo: String? = null,
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    var category: ItineraryCategory = ItineraryCategory.OTHER,
     @Column(nullable = false) var scheduledAt: Instant,
     @Column(nullable = false) var endsAt: Instant = scheduledAt.plusSeconds(3600),
     @Column(nullable = false) var notificationEnabled: Boolean = true,

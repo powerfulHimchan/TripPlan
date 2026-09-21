@@ -23,6 +23,7 @@ data class CreateItineraryItemRequest(
     val endsAt: Instant? = null,
     val notificationEnabled: Boolean = true,
     @field:Min(0) @field:Max(10080) val notificationMinutesBefore: Int = 0,
+    val category: ItineraryCategory = ItineraryCategory.OTHER,
 )
 
 data class UpdateItineraryItemRequest(
@@ -33,6 +34,7 @@ data class UpdateItineraryItemRequest(
     val endsAt: Instant,
     val notificationEnabled: Boolean = true,
     @field:Min(0) @field:Max(10080) val notificationMinutesBefore: Int = 0,
+    val category: ItineraryCategory = ItineraryCategory.OTHER,
 )
 
 data class UpdateNotificationRequest(
@@ -49,6 +51,7 @@ data class ItineraryItemResponse(
     val endsAt: Instant,
     val notificationEnabled: Boolean,
     val notificationMinutesBefore: Int,
+    val category: ItineraryCategory,
 )
 
 data class TripResponse(
