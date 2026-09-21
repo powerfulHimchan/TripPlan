@@ -12,6 +12,11 @@ import android.widget.NumberPicker
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,7 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -356,7 +364,7 @@ private fun TripListScreen(
                     colors = yeodamTopBarColors(),
                     title = {
                         Column {
-                            Text(stringResource(R.string.app_name), fontWeight = FontWeight.ExtraBold, color = Teal)
+                            YeodamAnimatedWordmark()
                             Text(state.email.orEmpty(), style = MaterialTheme.typography.labelSmall, color = Muted)
                         }
                     },
@@ -513,6 +521,53 @@ private fun TripListScreen(
     }
     if (showCreate) CreateTripDialog({ showCreate = false }) { onCreate(it); showCreate = false }
     if (showInvitations) InvitationDialog(state.invitations, { showInvitations = false }, onAccept, onDecline)
+}
+
+@Composable
+private fun YeodamAnimatedWordmark() {
+    val transition = rememberInfiniteTransition(label = "여담 워드마크")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 5_800
+                0f at 0
+                0f at 900
+                1f at 2_000
+                1f at 4_700
+                0f at 5_800
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "여행을 담다에서 여담으로",
+    )
+    val characters = listOf(
+        Triple("여", 0f, 0f),
+        Triple("행", 24f, 24f),
+        Triple("을", 48f, 48f),
+        Triple("담", 78f, 27f),
+        Triple("다", 102f, 102f),
+    )
+
+    Box(Modifier.width(126.dp).height(28.dp)) {
+        characters.forEachIndexed { index, (character, startX, endX) ->
+            val remains = index == 0 || index == 3
+            Text(
+                text = character,
+                modifier = Modifier
+                    .offset(x = (startX + (endX - startX) * progress).dp)
+                    .graphicsLayer {
+                        scaleY = if (remains) 1f else 1f - progress
+                        alpha = if (remains) 1f else 1f - progress
+                        transformOrigin = TransformOrigin.Center
+                    },
+                color = if (remains) lerp(Ink, Teal, progress) else Ink,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
+    }
 }
 
 private fun formatTripDateRange(trip: Trip): String {
@@ -683,7 +738,7 @@ private fun TripDetailScreen(
                                 Text("여행지", modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
                             }
                             Text(trip.destination, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                            Text("${trip.startDate}  —  ${trip.endDate}", color = Color.White.copy(alpha = 0.82f))
+                            Text(formatTripDateRange(trip), color = Color.White.copy(alpha = 0.82f))
                             Text("일정 ${trip.items.size}개 · 함께하는 사람 ${state.members.size}명", color = Color.White, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -720,12 +775,10 @@ private fun TripDetailScreen(
                         fontWeight = FontWeight.ExtraBold,
                         color = Ink,
                     )
-                    Text(
-                        if (showTimeline) "날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요."
-                        else if (hasCompletedItem) "종료된 일정의 기억에 남은 이야기를 기록해보세요."
-                        else "알림을 켜두면 계획한 시간에 알려드려요.",
-                        color = Muted,
-                    )
+                    when {
+                        showTimeline -> Text("날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요.", color = Muted)
+                        hasCompletedItem -> Text("종료된 일정의 기억에 남은 이야기를 기록해보세요.", color = Muted)
+                    }
                 }
                 if (trip.items.isEmpty()) item {
                     Card(
@@ -826,7 +879,7 @@ private fun CompletedTripAlbumScreen(
             topBar = {
                 TopAppBar(
                     colors = yeodamTopBarColors(),
-                    title = { Text("${trip.title} 앨범", fontWeight = FontWeight.ExtraBold, color = Ink) },
+                    title = { Text(trip.title, fontWeight = FontWeight.ExtraBold, color = Ink) },
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ 지난 여행", fontWeight = FontWeight.SemiBold) } },
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
@@ -853,7 +906,7 @@ private fun CompletedTripAlbumScreen(
                                 Text("우리의 지난 여행", modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp), color = Color.White, fontWeight = FontWeight.Bold)
                             }
                             Text(trip.destination, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                            Text("${trip.startDate}  —  ${trip.endDate}", color = Color.White.copy(alpha = 0.9f))
+                            Text(formatTripDateRange(trip), color = Color.White.copy(alpha = 0.9f))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 AlbumStat("후기", "$reviewedCount/${trip.items.size}")
                                 AlbumStat("사진", "${albumPhotos.size}장")
@@ -1437,10 +1490,9 @@ private fun ItineraryCard(
                         Text("알림 꺼짐", color = Muted, style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                Switch(
+                YeodamNotificationSwitch(
                     checked = item.notificationEnabled,
                     onCheckedChange = { onToggle(item, it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Teal, uncheckedTrackColor = Border),
                 )
             }
             if (progress == ScheduleProgress.UPCOMING) {
@@ -1618,10 +1670,30 @@ private fun EditItemDialog(
         ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("일정 알림", modifier = Modifier.weight(1f), color = Ink, fontWeight = FontWeight.SemiBold)
-            Switch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
+            YeodamNotificationSwitch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
         }
         MinuteBeforeField(before) { before = it }
     }
+}
+
+@Composable
+private fun YeodamNotificationSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        thumbContent = null,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = Teal,
+            checkedBorderColor = Teal,
+            uncheckedThumbColor = Muted,
+            uncheckedTrackColor = FieldBackground,
+            uncheckedBorderColor = Border,
+        ),
+    )
 }
 
 private fun itineraryInstant(date: String, time: LocalTime, zoneId: ZoneId): String? = runCatching {
