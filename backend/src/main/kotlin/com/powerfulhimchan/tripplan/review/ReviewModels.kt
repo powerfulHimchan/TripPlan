@@ -24,7 +24,7 @@ interface TripReviewRepository : org.springframework.data.jpa.repository.JpaRepo
 
 data class SaveReviewRequest(
     @field:Min(1) @field:Max(5) val rating: Int,
-    @field:NotBlank @field:Size(max = 5000) val content: String,
+    @field:Size(max = 5000) val content: String,
 )
 
 data class ReviewResponse(

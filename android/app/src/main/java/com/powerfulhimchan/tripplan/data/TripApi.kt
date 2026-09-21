@@ -27,6 +27,9 @@ interface TripApi {
     @POST("api/v1/trips/{tripId}/items")
     suspend fun addItem(@Path("tripId") tripId: String, @Body request: CreateItemRequest): ItineraryItem
 
+    @PUT("api/v1/items/{itemId}")
+    suspend fun updateItem(@Path("itemId") itemId: String, @Body request: CreateItemRequest): ItineraryItem
+
     @PATCH("api/v1/items/{itemId}/notification")
     suspend fun updateNotification(@Path("itemId") itemId: String, @Body request: UpdateNotificationRequest): ItineraryItem
 

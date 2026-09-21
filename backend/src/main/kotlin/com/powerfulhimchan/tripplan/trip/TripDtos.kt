@@ -22,6 +22,16 @@ data class CreateItineraryItemRequest(
     @field:Min(0) @field:Max(10080) val notificationMinutesBefore: Int = 0,
 )
 
+data class UpdateItineraryItemRequest(
+    @field:NotBlank @field:Size(max = 120) val title: String,
+    @field:Size(max = 200) val place: String? = null,
+    val memo: String? = null,
+    val scheduledAt: Instant,
+    val endsAt: Instant,
+    val notificationEnabled: Boolean = true,
+    @field:Min(0) @field:Max(10080) val notificationMinutesBefore: Int = 0,
+)
+
 data class UpdateNotificationRequest(
     val enabled: Boolean,
     @field:Min(0) @field:Max(10080) val minutesBefore: Int = 0,
