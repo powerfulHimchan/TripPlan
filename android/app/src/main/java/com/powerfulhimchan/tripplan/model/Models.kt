@@ -57,6 +57,35 @@ data class Review(
     val photos: List<ReviewPhoto> = emptyList(),
 )
 
+data class RepresentativePhoto(
+    val id: String,
+    val itemId: String,
+    val originalName: String,
+    val contentType: String,
+    val sizeBytes: Long,
+)
+
+data class TripOverallReview(
+    val id: String,
+    val tripId: String,
+    val rating: Int,
+    val content: String,
+    val representativePhoto: RepresentativePhoto?,
+    val updatedAt: String,
+)
+
+data class SaveTripOverallReviewRequest(
+    val rating: Int,
+    val content: String,
+    val representativePhotoId: String?,
+)
+
+data class GoogleCalendar(
+    val id: Long,
+    val name: String,
+    val accountName: String,
+)
+
 data class EmailPasswordRequest(val email: String, val password: String)
 data class AuthResponse(val accessToken: String, val userId: String, val email: String)
 data class InviteRequest(val email: String)

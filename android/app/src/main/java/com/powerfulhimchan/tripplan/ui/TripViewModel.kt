@@ -9,6 +9,7 @@ import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.data.TokenStore
 import com.powerfulhimchan.tripplan.data.ReviewPhotoUpload
 import com.powerfulhimchan.tripplan.data.TripRepository
+import com.powerfulhimchan.tripplan.data.GoogleCalendarExporter
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,10 @@ data class TripUiState(
     val selected: Trip? = null,
     val reviews: Map<String, Review> = emptyMap(),
     val reviewPhotoBytes: Map<String, ByteArray> = emptyMap(),
+    val overallReviews: Map<String, TripOverallReview> = emptyMap(),
+    val overallReviewPhotoBytes: Map<String, ByteArray> = emptyMap(),
+    val googleCalendars: List<GoogleCalendar> = emptyList(),
+    val calendarExportMessage: String? = null,
     val invitations: List<Invitation> = emptyList(),
     val members: List<TripMember> = emptyList(),
     val loading: Boolean = false,
@@ -32,6 +37,7 @@ data class TripUiState(
 
 class TripViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TripRepository(TokenStore(application))
+    private val calendarExporter = GoogleCalendarExporter(application)
     private val _state = MutableStateFlow(
         TripUiState(
             versionChecking = true,
@@ -67,8 +73,12 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() = launch {
+        val trips = repository.trips()
+        val overallReviews = loadOverallReviews(trips)
         _state.value.copy(
-            trips = repository.trips(),
+            trips = trips,
+            overallReviews = overallReviews,
+            overallReviewPhotoBytes = loadOverallReviewPhotoBytes(overallReviews),
             invitations = repository.invitations(),
             authenticated = true,
             email = repository.email,
@@ -87,9 +97,14 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             val reviews = trip.items.mapNotNull { item ->
                 repository.getReview(item.id)?.let { item.id to it }
             }.toMap()
+            val overallReview = _state.value.overallReviews[trip.id] ?: repository.getTripOverallReview(trip.id)
+            val overallReviews = overallReview?.let { _state.value.overallReviews + (trip.id to it) }
+                ?: _state.value.overallReviews
             _state.value.copy(
                 reviews = reviews,
                 reviewPhotoBytes = loadPhotoBytes(reviews),
+                overallReviews = overallReviews,
+                overallReviewPhotoBytes = _state.value.overallReviewPhotoBytes + loadOverallReviewPhotoBytes(overallReviews),
                 members = repository.members(trip.id),
             )
         }
@@ -144,9 +159,22 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             review = repository.uploadReviewPhotos(itemId, photoUris.map(::readPhoto))
         }
         val bytes = review.photos.associate { it.id to repository.reviewPhoto(itemId, it.id) }
+        val trip = _state.value.selected
+        val refreshedOverallReview = trip?.let { repository.getTripOverallReview(it.id) }
+        val overallReviews = if (trip != null) {
+            if (refreshedOverallReview != null) _state.value.overallReviews + (trip.id to refreshedOverallReview)
+            else _state.value.overallReviews - trip.id
+        } else _state.value.overallReviews
+        val overallPhotoBytes = if (trip != null) {
+            val withoutOldCover = _state.value.overallReviewPhotoBytes - trip.id
+            if (refreshedOverallReview != null) withoutOldCover + loadOverallReviewPhotoBytes(mapOf(trip.id to refreshedOverallReview))
+            else withoutOldCover
+        } else _state.value.overallReviewPhotoBytes
         _state.value.copy(
             reviews = _state.value.reviews + (itemId to review),
             reviewPhotoBytes = (_state.value.reviewPhotoBytes - removedPhotoIds) + bytes,
+            overallReviews = overallReviews,
+            overallReviewPhotoBytes = overallPhotoBytes,
         )
     }
 
@@ -156,6 +184,41 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             reviews = _state.value.reviews + (itemId to review),
             reviewPhotoBytes = _state.value.reviewPhotoBytes - photoId,
         )
+    }
+
+    fun saveTripOverallReview(rating: Int, content: String, representativePhotoId: String?) {
+        val trip = _state.value.selected ?: return
+        launch {
+            val review = repository.saveTripOverallReview(trip.id, rating, content, representativePhotoId)
+            val reviews = _state.value.overallReviews + (trip.id to review)
+            _state.value.copy(
+                overallReviews = reviews,
+                overallReviewPhotoBytes = (_state.value.overallReviewPhotoBytes - trip.id) +
+                    loadOverallReviewPhotoBytes(mapOf(trip.id to review)),
+            )
+        }
+    }
+
+    fun loadGoogleCalendars() = launch {
+        val calendars = calendarExporter.calendars()
+        _state.value.copy(
+            googleCalendars = calendars,
+            calendarExportMessage = if (calendars.isEmpty()) "기기에 연결된 Google 캘린더를 찾을 수 없습니다." else null,
+        )
+    }
+
+    fun exportSelectedTripToCalendar(calendarId: Long) {
+        val trip = _state.value.selected ?: return
+        launch {
+            val result = calendarExporter.export(trip, calendarId)
+            _state.value.copy(
+                calendarExportMessage = "Google 캘린더에 ${result.created}개를 추가하고 ${result.updated}개를 업데이트했습니다.",
+            )
+        }
+    }
+
+    fun clearCalendarExportMessage() {
+        _state.value = _state.value.copy(calendarExportMessage = null)
     }
 
     fun invite(email: String) {
@@ -184,10 +247,14 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     private fun authenticate(request: suspend () -> AuthResponse) = launch {
         request()
         deviceToken?.let { repository.registerDevice(it) }
+        val trips = repository.trips()
+        val overallReviews = loadOverallReviews(trips)
         _state.value.copy(
             authenticated = true,
             email = repository.email,
-            trips = repository.trips(),
+            trips = trips,
+            overallReviews = overallReviews,
+            overallReviewPhotoBytes = loadOverallReviewPhotoBytes(overallReviews),
             invitations = repository.invitations(),
         )
     }
@@ -195,6 +262,18 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun loadPhotoBytes(reviews: Map<String, Review>): Map<String, ByteArray> = buildMap {
         reviews.forEach { (itemId, review) ->
             review.photos.forEach { photo -> put(photo.id, repository.reviewPhoto(itemId, photo.id)) }
+        }
+    }
+
+    private suspend fun loadOverallReviews(trips: List<Trip>): Map<String, TripOverallReview> = buildMap {
+        trips.forEach { trip -> repository.getTripOverallReview(trip.id)?.let { put(trip.id, it) } }
+    }
+
+    private suspend fun loadOverallReviewPhotoBytes(reviews: Map<String, TripOverallReview>): Map<String, ByteArray> = buildMap {
+        reviews.values.forEach { review ->
+            review.representativePhoto?.let { photo ->
+                put(review.tripId, repository.reviewPhoto(photo.itemId, photo.id))
+            }
         }
     }
 

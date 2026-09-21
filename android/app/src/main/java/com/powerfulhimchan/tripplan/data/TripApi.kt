@@ -62,6 +62,15 @@ interface TripApi {
         @Path("photoId") photoId: String,
     ): Review
 
+    @GET("api/v1/trips/{tripId}/review")
+    suspend fun getTripOverallReview(@Path("tripId") tripId: String): Response<TripOverallReview>
+
+    @PUT("api/v1/trips/{tripId}/review")
+    suspend fun saveTripOverallReview(
+        @Path("tripId") tripId: String,
+        @Body request: SaveTripOverallReviewRequest,
+    ): TripOverallReview
+
     @POST("api/v1/trips/{tripId}/invitations")
     suspend fun invite(@Path("tripId") tripId: String, @Body request: InviteRequest): Invitation
 

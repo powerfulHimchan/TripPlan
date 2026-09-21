@@ -58,6 +58,9 @@ class TripRepository(private val tokenStore: TokenStore) {
     }
     suspend fun reviewPhoto(itemId: String, photoId: String) = api.getReviewPhoto(itemId, photoId).bytes()
     suspend fun deleteReviewPhoto(itemId: String, photoId: String) = api.deleteReviewPhoto(itemId, photoId)
+    suspend fun getTripOverallReview(tripId: String) = api.getTripOverallReview(tripId).body()
+    suspend fun saveTripOverallReview(tripId: String, rating: Int, content: String, representativePhotoId: String?) =
+        api.saveTripOverallReview(tripId, SaveTripOverallReviewRequest(rating, content, representativePhotoId))
     suspend fun invite(tripId: String, email: String) = api.invite(tripId, InviteRequest(email))
     suspend fun invitations() = api.getInvitations()
     suspend fun acceptInvitation(id: String) = api.acceptInvitation(id)
