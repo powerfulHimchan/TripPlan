@@ -16,8 +16,8 @@ android {
         applicationId = "com.powerfulhimchan.tripplan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
         buildConfigField("String", "API_BASE_URL", "\"https://yeodam-api-production.up.railway.app/\"")
     }
 
