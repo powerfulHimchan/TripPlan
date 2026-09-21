@@ -1071,7 +1071,7 @@ private fun TripOverallReviewEditor(
             }
         }
     }
-    Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
         TextButton(onClick = onCancel) { Text("취소", color = Muted) }
         Button(
             onClick = { onSave(rating, content, selectedPhotoId) },
