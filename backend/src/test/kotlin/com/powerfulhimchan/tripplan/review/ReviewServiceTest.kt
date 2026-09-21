@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.mock.web.MockMultipartFile
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 @SpringBootTest
 @Transactional
@@ -21,17 +22,27 @@ class ReviewServiceTest @Autowired constructor(
 ) {
     @Test
     fun `각 계획에 서로 다른 후기를 저장한다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val now = Instant.now()
         val trip = tripService.create(
             "user-1",
-            CreateTripRequest("지난 제주 여행", "제주", LocalDate.of(2025, 5, 1), LocalDate.of(2025, 5, 3)),
+            CreateTripRequest("진행 중인 제주 여행", "제주", today.minusDays(1), today.plusDays(1), "UTC"),
         )
         val first = tripService.addItem(
             "user-1", trip.id,
-            CreateItineraryItemRequest("제주공항", scheduledAt = Instant.parse("2025-05-01T01:00:00Z")),
+            CreateItineraryItemRequest(
+                "제주공항",
+                scheduledAt = now.minusSeconds(14_400),
+                endsAt = now.minusSeconds(10_800),
+            ),
         )
         val second = tripService.addItem(
             "user-1", trip.id,
-            CreateItineraryItemRequest("성산일출봉", scheduledAt = Instant.parse("2025-05-02T01:00:00Z")),
+            CreateItineraryItemRequest(
+                "성산일출봉",
+                scheduledAt = now.minusSeconds(7_200),
+                endsAt = now.minusSeconds(3_600),
+            ),
         )
 
         reviewService.save("user-1", first.id, SaveReviewRequest(4, "동선이 편했다."))
@@ -49,13 +60,19 @@ class ReviewServiceTest @Autowired constructor(
 
     @Test
     fun `후기 사진은 다섯 장을 초과할 수 없다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val now = Instant.now()
         val trip = tripService.create(
             "user-1",
-            CreateTripRequest("지난 부산 여행", "부산", LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 2)),
+            CreateTripRequest("진행 중인 부산 여행", "부산", today.minusDays(1), today.plusDays(1), "UTC"),
         )
         val item = tripService.addItem(
             "user-1", trip.id,
-            CreateItineraryItemRequest("광안리", scheduledAt = Instant.parse("2025-06-01T01:00:00Z")),
+            CreateItineraryItemRequest(
+                "광안리",
+                scheduledAt = now.minusSeconds(7_200),
+                endsAt = now.minusSeconds(3_600),
+            ),
         )
         reviewService.save("user-1", item.id, SaveReviewRequest(5, "야경이 좋았다."))
         val sixPhotos = (1..6).map {
@@ -69,7 +86,7 @@ class ReviewServiceTest @Autowired constructor(
 
     @Test
     fun `여행이 진행 중이어도 종료된 일정에는 후기를 작성할 수 있다`() {
-        val today = LocalDate.now()
+        val today = LocalDate.now(ZoneOffset.UTC)
         val trip = tripService.create(
             "user-1",
             CreateTripRequest("진행 중인 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
@@ -90,7 +107,7 @@ class ReviewServiceTest @Autowired constructor(
 
     @Test
     fun `종료되지 않은 일정에는 후기를 작성할 수 없다`() {
-        val today = LocalDate.now()
+        val today = LocalDate.now(ZoneOffset.UTC)
         val trip = tripService.create(
             "user-1",
             CreateTripRequest("진행 중인 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),

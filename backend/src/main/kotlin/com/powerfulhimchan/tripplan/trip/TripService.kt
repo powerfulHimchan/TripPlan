@@ -36,9 +36,10 @@ class TripService(
     @Transactional
     fun addItem(userId: String, tripId: UUID, request: CreateItineraryItemRequest): ItineraryItemResponse {
         val trip = accessibleTrip(userId, tripId)
+        val zoneId = ZoneId.of(trip.timezone)
+        require(!LocalDate.now(zoneId).isAfter(trip.endDate)) { "종료된 여행에는 일정을 추가할 수 없습니다." }
         val endsAt = request.endsAt ?: request.scheduledAt.plusSeconds(3600)
         require(endsAt.isAfter(request.scheduledAt)) { "일정 종료 시각은 시작 시각보다 늦어야 합니다." }
-        val zoneId = ZoneId.of(trip.timezone)
         val startDate = request.scheduledAt.atZone(zoneId).toLocalDate()
         val endDate = endsAt.atZone(zoneId).toLocalDate()
         require(

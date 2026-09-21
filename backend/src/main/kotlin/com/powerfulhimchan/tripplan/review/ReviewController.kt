@@ -20,7 +20,9 @@ class ReviewController(private val service: ReviewService) {
              @Valid @RequestBody request: SaveReviewRequest) = service.save(jwt.subject, itemId, request)
 
     @GetMapping
-    fun get(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID) = service.get(jwt.subject, itemId)
+    fun get(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID): ResponseEntity<ReviewResponse> =
+        service.get(jwt.subject, itemId)?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.noContent().build()
 
     @PostMapping("/photos", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun addPhotos(
