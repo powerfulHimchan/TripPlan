@@ -64,4 +64,70 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("종료된 여행")
     }
+
+    @Test
+    fun `시작되지 않은 일정을 수정한다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val now = Instant.now()
+        val trip = service.create(
+            "user-1",
+            CreateTripRequest("예정된 여행", "서울", today, today.plusDays(1), "UTC"),
+        )
+        val item = service.addItem(
+            "user-1",
+            trip.id,
+            CreateItineraryItemRequest("기존 일정", scheduledAt = now.plusSeconds(7_200)),
+        )
+
+        val updated = service.updateItem(
+            "user-1",
+            item.id,
+            UpdateItineraryItemRequest(
+                title = "수정한 일정",
+                place = "서울역",
+                memo = "변경된 메모",
+                scheduledAt = now.plusSeconds(10_800),
+                endsAt = now.plusSeconds(14_400),
+                notificationEnabled = false,
+                notificationMinutesBefore = 10,
+            ),
+        )
+
+        assertThat(updated.title).isEqualTo("수정한 일정")
+        assertThat(updated.place).isEqualTo("서울역")
+        assertThat(updated.endsAt).isEqualTo(now.plusSeconds(14_400))
+        assertThat(updated.notificationEnabled).isFalse()
+    }
+
+    @Test
+    fun `이미 시작된 일정은 수정할 수 없다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val now = Instant.now()
+        val trip = service.create(
+            "user-1",
+            CreateTripRequest("진행 중인 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
+        )
+        val item = service.addItem(
+            "user-1",
+            trip.id,
+            CreateItineraryItemRequest(
+                "진행 중 일정",
+                scheduledAt = now.minusSeconds(3_600),
+                endsAt = now.plusSeconds(3_600),
+            ),
+        )
+
+        assertThatThrownBy {
+            service.updateItem(
+                "user-1",
+                item.id,
+                UpdateItineraryItemRequest(
+                    title = "수정 시도",
+                    scheduledAt = now.plusSeconds(7_200),
+                    endsAt = now.plusSeconds(10_800),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("시작된 일정")
+    }
 }

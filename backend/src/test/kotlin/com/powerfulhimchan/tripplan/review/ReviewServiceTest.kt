@@ -125,4 +125,26 @@ class ReviewServiceTest @Autowired constructor(
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("일정 종료 후")
     }
+
+    @Test
+    fun `별점만 있는 후기도 저장할 수 있다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val trip = tripService.create(
+            "user-1",
+            CreateTripRequest("후기 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
+        )
+        val item = tripService.addItem(
+            "user-1", trip.id,
+            CreateItineraryItemRequest(
+                "지난 일정",
+                scheduledAt = Instant.now().minusSeconds(7_200),
+                endsAt = Instant.now().minusSeconds(3_600),
+            ),
+        )
+
+        val review = reviewService.save("user-1", item.id, SaveReviewRequest(4, ""))
+
+        assertThat(review.rating).isEqualTo(4)
+        assertThat(review.content).isEmpty()
+    }
 }

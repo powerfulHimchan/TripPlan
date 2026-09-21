@@ -88,8 +88,8 @@ fun TripApp(viewModel: TripViewModel) {
                 )
                 else -> TripDetailScreen(
                     state, { viewModel.select(null) }, viewModel::addItem,
-                    viewModel::toggleNotification, viewModel::saveReview,
-                    viewModel::deleteReviewPhoto, viewModel::invite,
+                    viewModel::updateItem, viewModel::toggleNotification,
+                    viewModel::saveReview, viewModel::invite,
                 )
             }
             if (state.loading) LoadingOverlay()
@@ -538,9 +538,9 @@ private fun TripDetailScreen(
     state: TripUiState,
     onBack: () -> Unit,
     onAddItem: (CreateItemRequest) -> Unit,
+    onUpdateItem: (String, CreateItemRequest) -> Unit,
     onToggle: (ItineraryItem, Boolean) -> Unit,
-    onSaveReview: (String, Int, String, List<Uri>) -> Unit,
-    onDeleteReviewPhoto: (String, String) -> Unit,
+    onSaveReview: (String, Int, String, List<Uri>, Set<String>) -> Unit,
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -549,7 +549,6 @@ private fun TripDetailScreen(
             state = state,
             onBack = onBack,
             onSaveReview = onSaveReview,
-            onDeleteReviewPhoto = onDeleteReviewPhoto,
             onInvite = onInvite,
         )
         return
@@ -570,6 +569,7 @@ private fun TripDetailScreen(
         trip.items.groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
     }
     var showItem by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<ItineraryItem?>(null) }
     var showSharing by remember { mutableStateOf(false) }
     var showTimeline by remember(trip.id) { mutableStateOf(false) }
     Box(
@@ -687,6 +687,7 @@ private fun TripDetailScreen(
                                 zoneId = zoneId,
                                 now = now,
                                 isLast = timelineItem.id == dayItems.last().id,
+                                onEdit = { editingItem = timelineItem },
                             )
                         }
                     }
@@ -697,8 +698,10 @@ private fun TripDetailScreen(
                             scheduleProgress(item, now) == ScheduleProgress.COMPLETED,
                             state.reviews[item.id],
                             state.reviewPhotoBytes,
-                            { rating, content, photos -> onSaveReview(item.id, rating, content, photos) },
-                            { photoId -> onDeleteReviewPhoto(item.id, photoId) },
+                            { editingItem = item },
+                            { rating, content, photos, removedPhotoIds ->
+                                onSaveReview(item.id, rating, content, photos, removedPhotoIds)
+                            },
                         )
                     }
                 }
@@ -706,6 +709,12 @@ private fun TripDetailScreen(
         }
     }
     if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
+    editingItem?.let { item ->
+        EditItemDialog(item, { editingItem = null }) { request ->
+            onUpdateItem(item.id, request)
+            editingItem = null
+        }
+    }
     if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
         onInvite(it)
         showSharing = false
@@ -716,8 +725,7 @@ private fun TripDetailScreen(
 private fun CompletedTripAlbumScreen(
     state: TripUiState,
     onBack: () -> Unit,
-    onSaveReview: (String, Int, String, List<Uri>) -> Unit,
-    onDeleteReviewPhoto: (String, String) -> Unit,
+    onSaveReview: (String, Int, String, List<Uri>, Set<String>) -> Unit,
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -850,11 +858,10 @@ private fun CompletedTripAlbumScreen(
                             photoBytes = state.reviewPhotoBytes,
                             editing = editingItemId == item.id,
                             onEdit = { editingItemId = if (editingItemId == item.id) null else item.id },
-                            onSaveReview = { rating, content, photos ->
-                                onSaveReview(item.id, rating, content, photos)
+                            onSaveReview = { rating, content, photos, removedPhotoIds ->
+                                onSaveReview(item.id, rating, content, photos, removedPhotoIds)
                                 editingItemId = null
                             },
-                            onDeletePhoto = { photoId -> onDeleteReviewPhoto(item.id, photoId) },
                         )
                     }
                 }
@@ -889,8 +896,7 @@ private fun AlbumReviewCard(
     photoBytes: Map<String, ByteArray>,
     editing: Boolean,
     onEdit: () -> Unit,
-    onSaveReview: (Int, String, List<Uri>) -> Unit,
-    onDeletePhoto: (String) -> Unit,
+    onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -924,7 +930,7 @@ private fun AlbumReviewCard(
 
             if (editing) {
                 HorizontalDivider(color = Border)
-                ReviewEditor(review, photoBytes, onSaveReview, onDeletePhoto)
+                ReviewEditor(review, photoBytes, onSaveReview)
                 TextButton(onClick = onEdit, modifier = Modifier.align(Alignment.End).padding(end = 10.dp, bottom = 6.dp)) {
                     Text("작성 닫기", color = Muted)
                 }
@@ -945,7 +951,9 @@ private fun AlbumReviewCard(
                 Row(Modifier.padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     repeat(5) { index -> Text(if (index < review.rating) "★" else "☆", color = Coral, fontSize = 22.sp) }
                 }
-                Text(review.content, modifier = Modifier.padding(horizontal = 18.dp), color = Ink, lineHeight = 21.sp)
+                if (review.content.isNotBlank()) {
+                    Text(review.content, modifier = Modifier.padding(horizontal = 18.dp), color = Ink, lineHeight = 21.sp)
+                }
                 if (review.photos.isNotEmpty()) {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 18.dp),
@@ -1062,6 +1070,7 @@ private fun TimelineItemCard(
     zoneId: ZoneId,
     now: Instant,
     isLast: Boolean,
+    onEdit: () -> Unit,
 ) {
     val progress = scheduleProgress(item, now)
     val accentColor = when (progress) {
@@ -1094,6 +1103,11 @@ private fun TimelineItemCard(
                 if (progress == ScheduleProgress.IN_PROGRESS) {
                     Text("현재 진행 중인 일정입니다", color = Coral, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 }
+                if (progress == ScheduleProgress.UPCOMING) {
+                    TextButton(onClick = onEdit, modifier = Modifier.align(Alignment.End)) {
+                        Text("일정 수정", color = Teal, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
@@ -1108,8 +1122,8 @@ private fun ItineraryCard(
     reviewEnabled: Boolean,
     review: Review?,
     photoBytes: Map<String, ByteArray>,
-    onSaveReview: (Int, String, List<Uri>) -> Unit,
-    onDeletePhoto: (String) -> Unit,
+    onEdit: () -> Unit,
+    onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
     val progress = scheduleProgress(item, now)
     val dateLabel = Instant.parse(item.scheduledAt).atZone(zoneId).format(DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN))
@@ -1149,9 +1163,15 @@ private fun ItineraryCard(
                     colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Teal, uncheckedTrackColor = Border),
                 )
             }
+            if (progress == ScheduleProgress.UPCOMING) {
+                TextButton(
+                    onClick = onEdit,
+                    modifier = Modifier.align(Alignment.End).padding(end = 10.dp, bottom = 6.dp),
+                ) { Text("일정 수정", color = Teal, fontWeight = FontWeight.Bold) }
+            }
             if (reviewEnabled) {
                 HorizontalDivider(color = Border)
-                ReviewEditor(review, photoBytes, onSaveReview, onDeletePhoto)
+                ReviewEditor(review, photoBytes, onSaveReview)
             }
         }
     }
@@ -1256,6 +1276,55 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
     }
 }
 
+@Composable
+private fun EditItemDialog(
+    item: ItineraryItem,
+    onDismiss: () -> Unit,
+    onSave: (CreateItemRequest) -> Unit,
+) {
+    var title by remember(item.id) { mutableStateOf(item.title) }
+    var place by remember(item.id) { mutableStateOf(item.place.orEmpty()) }
+    var memo by remember(item.id) { mutableStateOf(item.memo.orEmpty()) }
+    var startsAt by remember(item.id) { mutableStateOf(item.scheduledAt) }
+    var endsAt by remember(item.id) { mutableStateOf(item.endsAt) }
+    var notificationEnabled by remember(item.id) { mutableStateOf(item.notificationEnabled) }
+    var before by remember(item.id) { mutableStateOf(item.notificationMinutesBefore.toString()) }
+    val hasChanges = title != item.title ||
+        place != item.place.orEmpty() ||
+        memo != item.memo.orEmpty() ||
+        startsAt != item.scheduledAt ||
+        endsAt != item.endsAt ||
+        notificationEnabled != item.notificationEnabled ||
+        before.toIntOrNull() != item.notificationMinutesBefore
+    val validWindow = runCatching { Instant.parse(endsAt).isAfter(Instant.parse(startsAt)) }.getOrDefault(false)
+    val canSave = title.isNotBlank() && validWindow && before.toIntOrNull() != null && hasChanges
+
+    InputDialog("일정 수정", onDismiss, canSave, {
+        onSave(
+            CreateItemRequest(
+                title = title,
+                place = place.ifBlank { null },
+                memo = memo.ifBlank { null },
+                scheduledAt = startsAt,
+                endsAt = endsAt,
+                notificationEnabled = notificationEnabled,
+                notificationMinutesBefore = before.toInt(),
+            ),
+        )
+    }) {
+        Field(title, { title = it }, "일정 이름")
+        Field(place, { place = it }, "장소 (선택)")
+        Field(memo, { memo = it }, "메모 (선택)")
+        Field(startsAt, { startsAt = it }, "시작 시각 (ISO-8601)")
+        Field(endsAt, { endsAt = it }, "종료 시각 (ISO-8601)")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("일정 알림", modifier = Modifier.weight(1f), color = Ink, fontWeight = FontWeight.SemiBold)
+            Switch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
+        }
+        Field(before, { before = it }, "몇 분 전 알림")
+    }
+}
+
 private fun nextItineraryWindow(trip: Trip): Pair<String, String> {
     val zoneId = ZoneId.of(trip.timezone)
     val startsAt = trip.items
@@ -1270,18 +1339,23 @@ private fun nextItineraryWindow(trip: Trip): Pair<String, String> {
 private fun ReviewEditor(
     review: Review?,
     photoBytes: Map<String, ByteArray>,
-    onSave: (Int, String, List<Uri>) -> Unit,
-    onDeletePhoto: (String) -> Unit,
+    onSave: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
     var rating by remember(review) { mutableIntStateOf(review?.rating ?: 5) }
     var content by remember(review) { mutableStateOf(review?.content ?: "") }
     var selectedPhotos by remember(review?.updatedAt, review?.photos?.size) { mutableStateOf<List<Uri>>(emptyList()) }
-    val existingCount = review?.photos?.size ?: 0
-    val effectiveContent = content.ifBlank { review?.content.orEmpty() }
-    val hasChanges = review == null ||
+    var removedPhotoIds by remember(review?.updatedAt, review?.photos?.size) { mutableStateOf<Set<String>>(emptySet()) }
+    var ratingTouched by remember(review) { mutableStateOf(false) }
+    val visiblePhotos = review?.photos.orEmpty().filterNot { it.id in removedPhotoIds }
+    val existingCount = visiblePhotos.size
+    val hasChanges = if (review == null) {
+        ratingTouched || content.isNotBlank() || selectedPhotos.isNotEmpty()
+    } else {
         rating != review.rating ||
-        content != review.content ||
-        selectedPhotos.isNotEmpty()
+            content != review.content ||
+            selectedPhotos.isNotEmpty() ||
+            removedPhotoIds.isNotEmpty()
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         selectedPhotos = (selectedPhotos + uris).distinct().take(5 - existingCount)
     }
@@ -1291,18 +1365,21 @@ private fun ReviewEditor(
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             (1..5).forEach { score ->
                 TextButton(
-                    onClick = { rating = score },
+                    onClick = {
+                        rating = score
+                        ratingTouched = true
+                    },
                     modifier = Modifier.size(40.dp),
                     contentPadding = PaddingValues(0.dp),
                 ) { Text(if (score <= rating) "★" else "☆", color = Coral, fontSize = 26.sp) }
             }
         }
         Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
-        review?.photos?.forEach { photo ->
+        visiblePhotos.forEach { photo ->
             ReviewPhotoRow(
                 name = photo.originalName,
                 bytes = photoBytes[photo.id],
-                onRemove = { onDeletePhoto(photo.id) },
+                onRemove = { removedPhotoIds = removedPhotoIds + photo.id },
             )
         }
         selectedPhotos.forEach { uri ->
@@ -1316,8 +1393,8 @@ private fun ReviewEditor(
         ) { Text("사진 추가 (${existingCount + selectedPhotos.size}/5)") }
         Text("사진은 장당 최대 5MB, 후기당 최대 5장까지 등록할 수 있습니다.", style = MaterialTheme.typography.labelSmall, color = Muted)
         Button(
-            onClick = { onSave(rating, effectiveContent, selectedPhotos) },
-            enabled = effectiveContent.isNotBlank() && hasChanges,
+            onClick = { onSave(rating, content, selectedPhotos, removedPhotoIds) },
+            enabled = hasChanges,
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.align(Alignment.End),
         ) { Text("후기 저장") }

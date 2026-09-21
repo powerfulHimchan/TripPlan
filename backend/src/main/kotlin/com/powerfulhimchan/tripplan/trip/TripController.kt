@@ -26,6 +26,11 @@ class TripController(private val service: TripService) {
     fun addItem(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID,
                 @Valid @RequestBody request: CreateItineraryItemRequest) = service.addItem(jwt.subject, tripId, request)
 
+    @PutMapping("/items/{itemId}")
+    fun updateItem(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID,
+                   @Valid @RequestBody request: UpdateItineraryItemRequest) =
+        service.updateItem(jwt.subject, itemId, request)
+
     @PatchMapping("/items/{itemId}/notification")
     fun updateNotification(@AuthenticationPrincipal jwt: Jwt, @PathVariable itemId: UUID,
                            @Valid @RequestBody request: UpdateNotificationRequest) =

@@ -109,6 +109,15 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateItem(itemId: String, request: CreateItemRequest) {
+        val trip = _state.value.selected ?: return
+        launch {
+            repository.updateItem(itemId, request)
+            val trips = repository.trips()
+            _state.value.copy(trips = trips, selected = trips.first { it.id == trip.id })
+        }
+    }
+
     fun toggleNotification(item: ItineraryItem, enabled: Boolean) {
         val trip = _state.value.selected ?: return
         launch {
@@ -118,8 +127,17 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveReview(itemId: String, rating: Int, content: String, photoUris: List<Uri>) = launch {
+    fun saveReview(
+        itemId: String,
+        rating: Int,
+        content: String,
+        photoUris: List<Uri>,
+        removedPhotoIds: Set<String>,
+    ) = launch {
         var review = repository.saveReview(itemId, rating, content)
+        removedPhotoIds.forEach { photoId ->
+            review = repository.deleteReviewPhoto(itemId, photoId)
+        }
         if (photoUris.isNotEmpty()) {
             val remaining = MAX_PHOTO_COUNT - review.photos.size
             require(photoUris.size <= remaining) { "후기 사진은 최대 5장까지 등록할 수 있습니다." }
@@ -128,7 +146,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val bytes = review.photos.associate { it.id to repository.reviewPhoto(itemId, it.id) }
         _state.value.copy(
             reviews = _state.value.reviews + (itemId to review),
-            reviewPhotoBytes = _state.value.reviewPhotoBytes + bytes,
+            reviewPhotoBytes = (_state.value.reviewPhotoBytes - removedPhotoIds) + bytes,
         )
     }
 
