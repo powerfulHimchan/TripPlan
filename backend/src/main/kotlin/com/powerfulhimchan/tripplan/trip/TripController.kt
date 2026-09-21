@@ -9,7 +9,10 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/v1")
-class TripController(private val service: TripService) {
+class TripController(
+    private val service: TripService,
+    private val detailService: TripDetailService,
+) {
     @PostMapping("/trips")
     @ResponseStatus(HttpStatus.CREATED)
     fun create(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateTripRequest) =
@@ -20,6 +23,10 @@ class TripController(private val service: TripService) {
 
     @GetMapping("/trips/{tripId}")
     fun get(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) = service.get(jwt.subject, tripId)
+
+    @GetMapping("/trips/{tripId}/details")
+    fun details(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) =
+        detailService.get(jwt.subject, tripId)
 
     @PostMapping("/trips/{tripId}/items")
     @ResponseStatus(HttpStatus.CREATED)

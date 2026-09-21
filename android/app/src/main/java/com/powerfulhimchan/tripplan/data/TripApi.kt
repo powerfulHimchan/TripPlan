@@ -21,6 +21,9 @@ interface TripApi {
     @GET("api/v1/trips")
     suspend fun getTrips(): List<Trip>
 
+    @GET("api/v1/trips/{tripId}/details")
+    suspend fun getTripDetail(@Path("tripId") tripId: String): TripDetail
+
     @POST("api/v1/trips")
     suspend fun createTrip(@Body request: CreateTripRequest): Trip
 

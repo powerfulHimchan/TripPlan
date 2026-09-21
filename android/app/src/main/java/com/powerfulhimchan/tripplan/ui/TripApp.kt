@@ -20,6 +20,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -707,7 +708,7 @@ private fun TripDetailScreen(
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록", fontWeight = FontWeight.SemiBold) } },
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
-                        TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                        TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
                     },
                 )
             },
@@ -723,8 +724,13 @@ private fun TripDetailScreen(
             LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(if (showTimeline) 6.dp else 14.dp),
             ) {
+                if (state.detailLoading) {
+                    item(key = "detail-loading") {
+                        DetailLoadingIndicator()
+                    }
+                }
                 item {
                     Box(
                         Modifier
@@ -883,7 +889,7 @@ private fun CompletedTripAlbumScreen(
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ 지난 여행", fontWeight = FontWeight.SemiBold) } },
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
-                        TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                        TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
                     },
                 )
             },
@@ -893,6 +899,11 @@ private fun CompletedTripAlbumScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (state.detailLoading) {
+                    item(key = "album-detail-loading") {
+                        DetailLoadingIndicator()
+                    }
+                }
                 item {
                     Box(
                         Modifier
@@ -1287,7 +1298,7 @@ private fun CalendarExportAction(
             permissionLauncher.launch(permissions)
         }
     }
-    TextButton(onClick = openPicker) { Text("캘린더", fontWeight = FontWeight.SemiBold) }
+    TextButton(onClick = openPicker) { Text("내보내기", fontWeight = FontWeight.SemiBold) }
     if (showCalendars) {
         AlertDialog(
             onDismissRequest = { showCalendars = false },
@@ -1417,29 +1428,41 @@ private fun TimelineItemCard(
             if (!isLast) Box(Modifier.width(2.dp).weight(1f).background(Border))
         }
         Card(
-            modifier = Modifier.weight(1f).padding(bottom = if (isLast) 0.dp else 6.dp),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = if (isLast) 0.dp else 3.dp)
+                .clickable(enabled = progress == ScheduleProgress.UPCOMING, onClick = onEdit),
+            shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = if (progress == ScheduleProgress.IN_PROGRESS) Color(0xFFFFF1EE) else Color.White),
-            border = BorderStroke(if (progress == ScheduleProgress.IN_PROGRESS) 2.dp else 1.dp, if (progress == ScheduleProgress.IN_PROGRESS) Coral else Border),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 4.dp else 1.dp),
+            border = BorderStroke(if (progress == ScheduleProgress.IN_PROGRESS) 1.5.dp else 1.dp, if (progress == ScheduleProgress.IN_PROGRESS) Coral else Border),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 3.dp else 0.dp),
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(itineraryTimeRange(item, zoneId), color = accentColor, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Surface(shape = RoundedCornerShape(50), color = accentColor.copy(alpha = 0.14f)) {
-                        Text(progress.label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = accentColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    itineraryTimeRange(item, zoneId),
+                    color = accentColor,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.width(96.dp),
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(item.title, maxLines = 1, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = Ink)
+                    item.place?.let {
+                        Text("장소 · $it", maxLines = 1, color = Muted, style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Ink)
-                item.place?.let { Text("장소 · $it", color = Muted, style = MaterialTheme.typography.bodySmall) }
-                item.memo?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
-                if (progress == ScheduleProgress.IN_PROGRESS) {
-                    Text("현재 진행 중인 일정입니다", color = Coral, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                }
-                if (progress == ScheduleProgress.UPCOMING) {
-                    TextButton(onClick = onEdit, modifier = Modifier.align(Alignment.End)) {
-                        Text("일정 수정", color = Teal, fontWeight = FontWeight.Bold)
-                    }
+                Surface(shape = RoundedCornerShape(50), color = accentColor.copy(alpha = 0.14f)) {
+                    Text(
+                        if (progress == ScheduleProgress.IN_PROGRESS) "진행 중" else progress.label,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                        color = accentColor,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
         }
@@ -1466,7 +1489,9 @@ private fun ItineraryCard(
         ScheduleProgress.COMPLETED -> Leaf
     }
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = progress == ScheduleProgress.UPCOMING, onClick = onEdit),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
@@ -1495,16 +1520,29 @@ private fun ItineraryCard(
                     onCheckedChange = { onToggle(item, it) },
                 )
             }
-            if (progress == ScheduleProgress.UPCOMING) {
-                TextButton(
-                    onClick = onEdit,
-                    modifier = Modifier.align(Alignment.End).padding(end = 10.dp, bottom = 6.dp),
-                ) { Text("일정 수정", color = Teal, fontWeight = FontWeight.Bold) }
-            }
             if (reviewEnabled) {
                 HorizontalDivider(color = Border)
                 ReviewEditor(review, photoBytes, onSaveReview)
             }
+        }
+    }
+}
+
+@Composable
+private fun DetailLoadingIndicator() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, Border),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Teal, strokeWidth = 2.dp)
+            Text("후기와 동행 정보를 불러오는 중이에요", color = Muted, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
