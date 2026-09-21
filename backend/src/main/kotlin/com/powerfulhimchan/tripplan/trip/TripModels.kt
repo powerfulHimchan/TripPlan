@@ -44,6 +44,8 @@ class ItineraryItem(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     var category: ItineraryCategory = ItineraryCategory.OTHER,
+    @Column(nullable = false)
+    var costWon: Long = 0,
     @Column(nullable = false) var scheduledAt: Instant,
     @Column(nullable = false) var endsAt: Instant = scheduledAt.plusSeconds(3600),
     @Column(nullable = false) var notificationEnabled: Boolean = true,

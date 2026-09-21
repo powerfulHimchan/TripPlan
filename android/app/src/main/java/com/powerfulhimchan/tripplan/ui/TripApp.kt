@@ -69,6 +69,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.text.NumberFormat
 import java.util.Locale
 
 private val Teal = Color(0xFF26667F)
@@ -80,6 +81,7 @@ private val Leaf = Color(0xFF55A97B)
 private val Ink = Color(0xFF20343D)
 private val Muted = Color(0xFF6A7F88)
 private val Border = Color(0xFFDCE8EC)
+private val WonNumberFormat = NumberFormat.getNumberInstance(Locale.KOREA)
 
 private data class ItineraryCategoryStyle(
     val value: String,
@@ -779,6 +781,9 @@ private fun TripDetailScreen(
                         }
                     }
                 }
+                item(key = "trip-cost-summary") {
+                    TripCostSummary(trip.items, zoneId)
+                }
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!showTimeline) {
@@ -798,6 +803,7 @@ private fun TripDetailScreen(
                                     Text("지금 진행 중", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                     Text(current.title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                                     Text(itineraryTimeRange(current, zoneId), color = Color.White.copy(alpha = 0.9f))
+                                    Text("비용 · ${formatWon(current.costWon)}", color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold)
                                 }
                                 Text("NOW", color = Color.White, fontWeight = FontWeight.ExtraBold)
                             }
@@ -831,12 +837,7 @@ private fun TripDetailScreen(
                 if (showTimeline) {
                     timelineGroups.forEach { (date, dayItems) ->
                         item(key = "date-$date") {
-                            Text(
-                                date.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)),
-                                color = Teal,
-                                fontWeight = FontWeight.ExtraBold,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
+                            DateCostHeader(date, dayItems)
                         }
                         items(dayItems, key = { "timeline-${it.id}" }) { timelineItem ->
                             TimelineItemCard(
@@ -974,6 +975,10 @@ private fun CompletedTripAlbumScreen(
                     )
                 }
 
+                item(key = "album-cost-summary") {
+                    TripCostSummary(trip.items, zoneId)
+                }
+
                 item {
                     Text("여행 사진", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
                     Text("남긴 사진을 한곳에 모았어요.", color = Muted)
@@ -1032,12 +1037,7 @@ private fun CompletedTripAlbumScreen(
 
                 groupedItems.forEach { (date, dayItems) ->
                     item(key = "album-date-$date") {
-                        Text(
-                            date.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)),
-                            color = Teal,
-                            fontWeight = FontWeight.ExtraBold,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        DateCostHeader(date, dayItems)
                     }
                     items(dayItems, key = { "album-item-${it.id}" }) { item ->
                         AlbumReviewCard(
@@ -1236,6 +1236,7 @@ private fun AlbumReviewCard(
                 Spacer(Modifier.height(5.dp))
                 Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
                 item.place?.let { Text("장소 · $it", color = Muted) }
+                Text("비용 · ${formatWon(item.costWon)}", color = category.accentColor, fontWeight = FontWeight.Bold)
                 item.memo?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
             }
 
@@ -1454,6 +1455,63 @@ private fun itineraryTimeRange(item: ItineraryItem, zoneId: ZoneId): String {
     return "${startsAt.format(formatter)} — ${endsAt.format(formatter)}"
 }
 
+private fun formatWon(amount: Long): String =
+    "${WonNumberFormat.format(amount)}원"
+
+@Composable
+private fun TripCostSummary(itineraryItems: List<ItineraryItem>, zoneId: ZoneId) {
+    val dailyCosts = remember(itineraryItems, zoneId) {
+        itineraryItems
+            .groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
+            .mapValues { (_, items) -> items.sumOf(ItineraryItem::costWon) }
+            .toSortedMap()
+            .toList()
+    }
+    val totalCost = remember(itineraryItems) { itineraryItems.sumOf(ItineraryItem::costWon) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, Border),
+        shadowElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("여행 비용", color = Ink, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                Text(formatWon(totalCost), color = Coral, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            }
+            if (dailyCosts.isEmpty()) {
+                Text("일정을 추가하면 날짜별 비용을 확인할 수 있어요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            } else {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(dailyCosts, key = { it.first.toString() }) { (date, cost) ->
+                        Surface(shape = RoundedCornerShape(13.dp), color = PaleSky) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                Text(date.format(DateTimeFormatter.ofPattern("M월 d일")), color = Muted, style = MaterialTheme.typography.labelSmall)
+                                Text(formatWon(cost), color = Teal, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DateCostHeader(date: LocalDate, dayItems: List<ItineraryItem>) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            date.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)),
+            color = Teal,
+            fontWeight = FontWeight.ExtraBold,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(formatWon(dayItems.sumOf(ItineraryItem::costWon)), color = Coral, fontWeight = FontWeight.ExtraBold)
+    }
+}
+
 @Composable
 private fun TimelineItemCard(
     item: ItineraryItem,
@@ -1511,6 +1569,7 @@ private fun TimelineItemCard(
                     item.place?.let {
                         Text("장소 · $it", maxLines = 1, color = Muted, style = MaterialTheme.typography.labelSmall)
                     }
+                    Text("비용 · ${formatWon(item.costWon)}", color = category.accentColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
                 Surface(shape = RoundedCornerShape(50), color = accentColor.copy(alpha = 0.14f)) {
                     Text(
@@ -1570,6 +1629,7 @@ private fun ItineraryCard(
                     Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
                     Text("$dateLabel · ${itineraryTimeRange(item, zoneId)}", style = MaterialTheme.typography.bodyMedium, color = Muted)
                     item.place?.let { Text("장소 · $it", color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    Text("비용 · ${formatWon(item.costWon)}", color = category.accentColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     if (item.notificationEnabled) {
                         Text("${item.notificationMinutesBefore}분 전 알려드려요", color = Coral, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     } else {
@@ -1701,6 +1761,7 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
     var place by remember { mutableStateOf("") }
     var memo by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("OTHER") }
+    var cost by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf(initialStart.toLocalDate().toString()) }
     var startTime by remember { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
     var endDate by remember { mutableStateOf(initialEnd.toLocalDate().toString()) }
@@ -1711,7 +1772,9 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
     val validWindow = startsAt != null && endsAt != null && Instant.parse(endsAt).isAfter(Instant.parse(startsAt))
     val beforeMinutes = before.toIntOrNull()
     val validNotification = beforeMinutes != null && beforeMinutes in 0..10080
-    InputDialog("일정 추가", onDismiss, title.isNotBlank() && validWindow && validNotification, {
+    val costWon = cost.toLongOrNull() ?: 0
+    val validCost = cost.isBlank() || cost.toLongOrNull() != null
+    InputDialog("일정 추가", onDismiss, title.isNotBlank() && validWindow && validNotification && validCost, {
         onSave(
             CreateItemRequest(
                 title = title,
@@ -1721,6 +1784,7 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
                 endsAt = endsAt!!,
                 notificationMinutesBefore = beforeMinutes ?: 0,
                 category = category,
+                costWon = costWon,
             ),
         )
     }) {
@@ -1728,6 +1792,7 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
         CategorySelector(category) { category = it }
+        CostField(cost) { cost = it }
         ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
         ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         MinuteBeforeField(before) { before = it }
@@ -1747,6 +1812,7 @@ private fun EditItemDialog(
     var place by remember(item.id) { mutableStateOf(item.place.orEmpty()) }
     var memo by remember(item.id) { mutableStateOf(item.memo.orEmpty()) }
     var category by remember(item.id) { mutableStateOf(item.category) }
+    var cost by remember(item.id) { mutableStateOf(item.costWon.takeIf { it > 0 }?.toString().orEmpty()) }
     var startDate by remember(item.id) { mutableStateOf(initialStart.toLocalDate().toString()) }
     var startTime by remember(item.id) { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
     var endDate by remember(item.id) { mutableStateOf(initialEnd.toLocalDate().toString()) }
@@ -1755,10 +1821,12 @@ private fun EditItemDialog(
     var before by remember(item.id) { mutableStateOf(item.notificationMinutesBefore.toString()) }
     val startsAt = itineraryInstant(startDate, startTime, zoneId)
     val endsAt = itineraryInstant(endDate, endTime, zoneId)
+    val costWon = cost.toLongOrNull() ?: 0
     val hasChanges = title != item.title ||
         place != item.place.orEmpty() ||
         memo != item.memo.orEmpty() ||
         category != item.category ||
+        costWon != item.costWon ||
         startsAt != item.scheduledAt ||
         endsAt != item.endsAt ||
         notificationEnabled != item.notificationEnabled ||
@@ -1766,7 +1834,8 @@ private fun EditItemDialog(
     val validWindow = startsAt != null && endsAt != null && Instant.parse(endsAt).isAfter(Instant.parse(startsAt))
     val beforeMinutes = before.toIntOrNull()
     val validNotification = beforeMinutes != null && beforeMinutes in 0..10080
-    val canSave = title.isNotBlank() && validWindow && validNotification && hasChanges
+    val validCost = cost.isBlank() || cost.toLongOrNull() != null
+    val canSave = title.isNotBlank() && validWindow && validNotification && validCost && hasChanges
 
     InputDialog("일정 수정", onDismiss, canSave, {
         onSave(
@@ -1779,6 +1848,7 @@ private fun EditItemDialog(
                 notificationEnabled = notificationEnabled,
                 notificationMinutesBefore = beforeMinutes ?: 0,
                 category = category,
+                costWon = costWon,
             ),
         )
     }) {
@@ -1786,6 +1856,7 @@ private fun EditItemDialog(
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
         CategorySelector(category) { category = it }
+        CostField(cost) { cost = it }
         ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
         ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1829,6 +1900,29 @@ private fun CategorySelector(selected: String, onSelected: (String) -> Unit) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CostField(value: String, onChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "비용 (선택)",
+            modifier = Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = Muted,
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = { input -> onChange(input.filter(Char::isDigit).take(12)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            suffix = { Text("원", color = Muted) },
+            placeholder = { Text("0", color = Muted) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+            shape = RoundedCornerShape(16.dp),
+            colors = yeodamFieldColors(),
+        )
     }
 }
 

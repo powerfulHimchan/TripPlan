@@ -39,6 +39,7 @@ class TripService(
         val trip = accessibleTrip(userId, tripId)
         val zoneId = ZoneId.of(trip.timezone)
         require(!LocalDate.now(zoneId).isAfter(trip.endDate)) { "종료된 여행에는 일정을 추가할 수 없습니다." }
+        require(request.costWon >= 0) { "일정 비용은 0원 이상이어야 합니다." }
         val endsAt = request.endsAt ?: request.scheduledAt.plusSeconds(3600)
         validateItemWindow(trip, request.scheduledAt, endsAt)
         return items.save(ItineraryItem(
@@ -47,6 +48,7 @@ class TripService(
             place = request.place?.trim()?.ifBlank { null },
             memo = request.memo?.trim()?.ifBlank { null },
             category = request.category,
+            costWon = request.costWon,
             scheduledAt = request.scheduledAt,
             endsAt = endsAt,
             notificationEnabled = request.notificationEnabled,
@@ -61,6 +63,7 @@ class TripService(
         val now = java.time.Instant.now()
         require(now.isBefore(item.scheduledAt)) { "시작된 일정은 수정할 수 없습니다." }
         require(now.isBefore(request.scheduledAt)) { "일정 시작 시각은 현재보다 이후여야 합니다." }
+        require(request.costWon >= 0) { "일정 비용은 0원 이상이어야 합니다." }
         validateItemWindow(trip, request.scheduledAt, request.endsAt)
 
         val notificationScheduleChanged = item.scheduledAt != request.scheduledAt ||
@@ -70,6 +73,7 @@ class TripService(
         item.place = request.place?.trim()?.ifBlank { null }
         item.memo = request.memo?.trim()?.ifBlank { null }
         item.category = request.category
+        item.costWon = request.costWon
         item.scheduledAt = request.scheduledAt
         item.endsAt = request.endsAt
         item.notificationEnabled = request.notificationEnabled
@@ -123,5 +127,6 @@ class TripService(
         notificationEnabled = notificationEnabled,
         notificationMinutesBefore = notificationMinutesBefore,
         category = category,
+        costWon = costWon,
     )
 }

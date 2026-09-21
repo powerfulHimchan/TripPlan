@@ -22,10 +22,12 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
                 "제주공항",
                 scheduledAt = Instant.parse("2027-05-01T01:00:00Z"),
                 category = ItineraryCategory.TRANSPORTATION,
+                costWon = 25_000,
             ),
         )
         assertThat(item.endsAt).isEqualTo(Instant.parse("2027-05-01T02:00:00Z"))
         assertThat(item.category).isEqualTo(ItineraryCategory.TRANSPORTATION)
+        assertThat(item.costWon).isEqualTo(25_000)
         assertThat(service.get("user-1", trip.id).items).containsExactly(item)
     }
 
@@ -45,6 +47,27 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("종료 시각")
+    }
+
+    @Test
+    fun `일정 비용은 음수일 수 없다`() {
+        val trip = service.create(
+            "user-1",
+            CreateTripRequest("비용 여행", "서울", LocalDate.of(2027, 7, 1), LocalDate.of(2027, 7, 2), "Asia/Seoul"),
+        )
+
+        assertThatThrownBy {
+            service.addItem(
+                "user-1",
+                trip.id,
+                CreateItineraryItemRequest(
+                    title = "잘못된 비용",
+                    scheduledAt = Instant.parse("2027-07-01T03:00:00Z"),
+                    costWon = -1,
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("0원 이상")
     }
 
     @Test
@@ -101,6 +124,7 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
                 notificationEnabled = false,
                 notificationMinutesBefore = 10,
                 category = ItineraryCategory.SIGHTSEEING,
+                costWon = 120_000,
             ),
         )
 
@@ -109,6 +133,7 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
         assertThat(updated.endsAt).isEqualTo(now.plusSeconds(14_400))
         assertThat(updated.notificationEnabled).isFalse()
         assertThat(updated.category).isEqualTo(ItineraryCategory.SIGHTSEEING)
+        assertThat(updated.costWon).isEqualTo(120_000)
     }
 
     @Test
