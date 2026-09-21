@@ -2,9 +2,13 @@
 
 package com.powerfulhimchan.tripplan.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.LinearLayout
+import android.widget.NumberPicker
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +23,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,18 +34,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.R
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -89,7 +103,9 @@ fun TripApp(viewModel: TripViewModel) {
                 else -> TripDetailScreen(
                     state, { viewModel.select(null) }, viewModel::addItem,
                     viewModel::updateItem, viewModel::toggleNotification,
-                    viewModel::saveReview, viewModel::invite,
+                    viewModel::saveReview, viewModel::saveTripOverallReview,
+                    viewModel::loadGoogleCalendars, viewModel::exportSelectedTripToCalendar,
+                    viewModel::clearCalendarExportMessage, viewModel::invite,
                 )
             }
             if (state.loading) LoadingOverlay()
@@ -216,6 +232,13 @@ private fun AuthScreen(
     var registerMode by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val submit = {
+        if (!loading && email.isNotBlank() && password.length >= 8) {
+            keyboardController?.hide()
+            if (registerMode) onRegister(email, password) else onLogin(email, password)
+        }
+    }
     val fieldColors = yeodamFieldColors()
     Box(
         Modifier
@@ -269,6 +292,11 @@ private fun AuthScreen(
                         label = { Text("이메일 주소") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next,
+                            autoCorrectEnabled = false,
+                        ),
                         shape = RoundedCornerShape(16.dp),
                         colors = fieldColors,
                     )
@@ -276,11 +304,17 @@ private fun AuthScreen(
                         password, { password = it }, label = { Text("비밀번호 (8자 이상)") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                            autoCorrectEnabled = false,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { submit() }),
                         shape = RoundedCornerShape(16.dp),
                         colors = fieldColors,
                     )
                     Button(
-                        onClick = { if (registerMode) onRegister(email, password) else onLogin(email, password) },
+                        onClick = submit,
                         enabled = !loading && email.isNotBlank() && password.length >= 8,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -424,6 +458,9 @@ private fun TripListScreen(
                     }
                     items(visibleTrips, key = { it.id }) { trip ->
                         val progress = tripProgress(trip)
+                        val coverBytes = state.overallReviews[trip.id]?.representativePhoto
+                            ?.let { state.overallReviewPhotoBytes[trip.id] }
+                        val hasCover = coverBytes != null
                         Card(
                             onClick = { onSelect(trip) },
                             modifier = Modifier.fillMaxWidth(),
@@ -431,26 +468,42 @@ private fun TripListScreen(
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                         ) {
-                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = RoundedCornerShape(50), color = Sky) {
-                                        Text(trip.destination, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Teal, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            Box {
+                                coverBytes?.let { bytes ->
+                                    val bitmap = remember(bytes) {
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
                                     }
-                                    Spacer(Modifier.weight(1f))
-                                    TripStatusBadge(progress)
+                                    bitmap?.let {
+                                        Image(
+                                            bitmap = it.asImageBitmap(),
+                                            contentDescription = "${trip.title} 대표 사진",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.matchParentSize(),
+                                        )
+                                    }
                                 }
-                                Text(trip.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
-                                Text("${trip.startDate}  —  ${trip.endDate}", color = Muted)
-                                HorizontalDivider(color = Border)
-                                Text(
-                                    when (progress) {
-                                        TripProgress.UPCOMING -> "일정 ${trip.items.size}개  ·  계획 확인하기 →"
-                                        TripProgress.IN_PROGRESS -> "일정 ${trip.items.size}개  ·  진행 중인 여행 보기 →"
-                                        TripProgress.COMPLETED -> "일정 ${trip.items.size}개  ·  후기 돌아보기 →"
-                                    },
-                                    color = Coral,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
+                                if (hasCover) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.46f)))
+                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(shape = RoundedCornerShape(50), color = if (hasCover) Color.White.copy(alpha = 0.9f) else Sky) {
+                                            Text(trip.destination, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Teal, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.weight(1f))
+                                        TripStatusBadge(progress)
+                                    }
+                                    Text(trip.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = if (hasCover) Color.White else Ink)
+                                    Text(formatTripDateRange(trip), color = if (hasCover) Color.White.copy(alpha = 0.88f) else Muted)
+                                    HorizontalDivider(color = if (hasCover) Color.White.copy(alpha = 0.4f) else Border)
+                                    Text(
+                                        when (progress) {
+                                            TripProgress.UPCOMING -> "일정 ${trip.items.size}개  ·  계획 확인하기 →"
+                                            TripProgress.IN_PROGRESS -> "일정 ${trip.items.size}개  ·  진행 중인 여행 보기 →"
+                                            TripProgress.COMPLETED -> "일정 ${trip.items.size}개  ·  후기 돌아보기 →"
+                                        },
+                                        color = if (hasCover) Color.White else Coral,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
                             }
                         }
                     }
@@ -460,6 +513,11 @@ private fun TripListScreen(
     }
     if (showCreate) CreateTripDialog({ showCreate = false }) { onCreate(it); showCreate = false }
     if (showInvitations) InvitationDialog(state.invitations, { showInvitations = false }, onAccept, onDecline)
+}
+
+private fun formatTripDateRange(trip: Trip): String {
+    val formatter = DateTimeFormatter.ofPattern("yyyy년 MM월 dd일")
+    return "${LocalDate.parse(trip.startDate).format(formatter)} - ${LocalDate.parse(trip.endDate).format(formatter)}"
 }
 
 private enum class TripProgress(val label: String) {
@@ -541,6 +599,10 @@ private fun TripDetailScreen(
     onUpdateItem: (String, CreateItemRequest) -> Unit,
     onToggle: (ItineraryItem, Boolean) -> Unit,
     onSaveReview: (String, Int, String, List<Uri>, Set<String>) -> Unit,
+    onSaveOverallReview: (Int, String, String?) -> Unit,
+    onLoadGoogleCalendars: () -> Unit,
+    onExportToCalendar: (Long) -> Unit,
+    onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -549,6 +611,10 @@ private fun TripDetailScreen(
             state = state,
             onBack = onBack,
             onSaveReview = onSaveReview,
+            onSaveOverallReview = onSaveOverallReview,
+            onLoadGoogleCalendars = onLoadGoogleCalendars,
+            onExportToCalendar = onExportToCalendar,
+            onClearCalendarMessage = onClearCalendarMessage,
             onInvite = onInvite,
         )
         return
@@ -584,7 +650,10 @@ private fun TripDetailScreen(
                     colors = yeodamTopBarColors(),
                     title = { Text(trip.title, fontWeight = FontWeight.ExtraBold, color = Ink) },
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ 목록", fontWeight = FontWeight.SemiBold) } },
-                    actions = { TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) } },
+                    actions = {
+                        CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
+                        TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                    },
                 )
             },
             floatingActionButton = {
@@ -653,7 +722,7 @@ private fun TripDetailScreen(
                     )
                     Text(
                         if (showTimeline) "날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요."
-                        else if (hasCompletedItem) "종료된 일정마다 기억에 남은 이야기를 기록해보세요."
+                        else if (hasCompletedItem) "종료된 일정의 기억에 남은 이야기를 기록해보세요."
                         else "알림을 켜두면 계획한 시간에 알려드려요.",
                         color = Muted,
                     )
@@ -710,7 +779,7 @@ private fun TripDetailScreen(
     }
     if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
     editingItem?.let { item ->
-        EditItemDialog(item, { editingItem = null }) { request ->
+        EditItemDialog(item, zoneId, { editingItem = null }) { request ->
             onUpdateItem(item.id, request)
             editingItem = null
         }
@@ -726,6 +795,10 @@ private fun CompletedTripAlbumScreen(
     state: TripUiState,
     onBack: () -> Unit,
     onSaveReview: (String, Int, String, List<Uri>, Set<String>) -> Unit,
+    onSaveOverallReview: (Int, String, String?) -> Unit,
+    onLoadGoogleCalendars: () -> Unit,
+    onExportToCalendar: (Long) -> Unit,
+    onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -740,6 +813,7 @@ private fun CompletedTripAlbumScreen(
     }
     val canInvite = state.members.any { it.owner && it.email == state.email }
     var editingItemId by remember(trip.id) { mutableStateOf<String?>(null) }
+    var editingOverallReview by remember(trip.id) { mutableStateOf(false) }
     var showSharing by remember { mutableStateOf(false) }
 
     Box(
@@ -754,7 +828,10 @@ private fun CompletedTripAlbumScreen(
                     colors = yeodamTopBarColors(),
                     title = { Text("${trip.title} 앨범", fontWeight = FontWeight.ExtraBold, color = Ink) },
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ 지난 여행", fontWeight = FontWeight.SemiBold) } },
-                    actions = { TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) } },
+                    actions = {
+                        CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
+                        TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                    },
                 )
             },
         ) { padding ->
@@ -787,8 +864,22 @@ private fun CompletedTripAlbumScreen(
                 }
 
                 item {
+                    TripOverallReviewCard(
+                        review = state.overallReviews[trip.id],
+                        albumPhotos = albumPhotos,
+                        photoBytes = state.reviewPhotoBytes,
+                        editing = editingOverallReview,
+                        onEdit = { editingOverallReview = !editingOverallReview },
+                        onSave = { rating, content, representativePhotoId ->
+                            onSaveOverallReview(rating, content, representativePhotoId)
+                            editingOverallReview = false
+                        },
+                    )
+                }
+
+                item {
                     Text("여행 사진", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    Text("계획마다 남긴 사진을 한곳에 모았어요.", color = Muted)
+                    Text("남긴 사진을 한곳에 모았어요.", color = Muted)
                 }
 
                 if (albumPhotos.isEmpty()) {
@@ -825,7 +916,7 @@ private fun CompletedTripAlbumScreen(
                 item {
                     Spacer(Modifier.height(2.dp))
                     Text("날짜별 여담", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    Text("일정마다 기억에 남은 이야기를 완성해보세요.", color = Muted)
+                    Text("기억에 남은 이야기를 완성해보세요.", color = Muted)
                 }
 
                 if (trip.items.isEmpty()) {
@@ -871,6 +962,122 @@ private fun CompletedTripAlbumScreen(
     if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
         onInvite(it)
         showSharing = false
+    }
+}
+
+@Composable
+private fun TripOverallReviewCard(
+    review: TripOverallReview?,
+    albumPhotos: List<Pair<ItineraryItem, ReviewPhoto>>,
+    photoBytes: Map<String, ByteArray>,
+    editing: Boolean,
+    onEdit: () -> Unit,
+    onSave: (Int, String, String?) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Coral.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("여행 전체 여담", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Teal)
+                    Text("여행 전체의 기억을 한 번 더 남겨보세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                if (review != null && !editing) {
+                    TextButton(onClick = onEdit) { Text("수정", color = Teal, fontWeight = FontWeight.Bold) }
+                }
+            }
+            when {
+                editing -> TripOverallReviewEditor(review, albumPhotos, photoBytes, onSave, onEdit)
+                review == null -> {
+                    Text("별점과 이야기, 대표 사진을 선택할 수 있어요.", color = Muted)
+                    Button(onClick = onEdit, modifier = Modifier.align(Alignment.End), shape = RoundedCornerShape(14.dp)) {
+                        Text("전체 후기 작성")
+                    }
+                }
+                else -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(5) { index -> Text(if (index < review.rating) "★" else "☆", color = Coral, fontSize = 24.sp) }
+                    }
+                    if (review.content.isNotBlank()) Text(review.content, color = Ink, lineHeight = 21.sp)
+                    review.representativePhoto?.let { photo ->
+                        AlbumPhoto(
+                            bytes = photoBytes[photo.id],
+                            contentDescription = photo.originalName,
+                            modifier = Modifier.fillMaxWidth().height(180.dp),
+                        )
+                        Text("여행 목록 대표 사진", color = Teal, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripOverallReviewEditor(
+    review: TripOverallReview?,
+    albumPhotos: List<Pair<ItineraryItem, ReviewPhoto>>,
+    photoBytes: Map<String, ByteArray>,
+    onSave: (Int, String, String?) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var rating by remember(review) { mutableIntStateOf(review?.rating ?: 5) }
+    var ratingTouched by remember(review) { mutableStateOf(false) }
+    var content by remember(review) { mutableStateOf(review?.content.orEmpty()) }
+    var selectedPhotoId by remember(review) { mutableStateOf(review?.representativePhoto?.id) }
+    val hasChanges = if (review == null) {
+        ratingTouched || content.isNotBlank() || selectedPhotoId != null
+    } else {
+        rating != review.rating || content != review.content || selectedPhotoId != review.representativePhoto?.id
+    }
+    HorizontalDivider(color = Border)
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        (1..5).forEach { score ->
+            TextButton(
+                onClick = { rating = score; ratingTouched = true },
+                modifier = Modifier.size(40.dp),
+                contentPadding = PaddingValues(0.dp),
+            ) { Text(if (score <= rating) "★" else "☆", color = Coral, fontSize = 26.sp) }
+        }
+    }
+    Field(content, { content = it }, "여행 전체에서 기억하고 싶은 점")
+    Text("대표 사진", color = Ink, fontWeight = FontWeight.Bold)
+    if (albumPhotos.isEmpty()) {
+        Text("일정별 후기에 사진을 추가하면 대표 사진으로 선택할 수 있어요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+    } else {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(albumPhotos, key = { "overall-photo-${it.second.id}" }) { (item, photo) ->
+                Card(
+                    onClick = { selectedPhotoId = if (selectedPhotoId == photo.id) null else photo.id },
+                    modifier = Modifier.width(112.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(if (selectedPhotoId == photo.id) 3.dp else 1.dp, if (selectedPhotoId == photo.id) Coral else Border),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                ) {
+                    Column {
+                        AlbumPhoto(
+                            bytes = photoBytes[photo.id],
+                            contentDescription = photo.originalName,
+                            modifier = Modifier.fillMaxWidth().height(82.dp),
+                        )
+                        Text(item.title, modifier = Modifier.padding(7.dp), maxLines = 1, color = Ink, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+        TextButton(onClick = onCancel) { Text("취소", color = Muted) }
+        Button(
+            onClick = { onSave(rating, content, selectedPhotoId) },
+            enabled = hasChanges,
+            shape = RoundedCornerShape(14.dp),
+        ) { Text("전체 후기 저장") }
     }
 }
 
@@ -997,6 +1204,79 @@ private fun AlbumPhoto(bytes: ByteArray?, contentDescription: String, modifier: 
                 Text("사진 불러오는 중", color = Muted, style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+}
+
+@Composable
+private fun CalendarExportAction(
+    state: TripUiState,
+    onLoadCalendars: () -> Unit,
+    onExport: (Long) -> Unit,
+    onClearMessage: () -> Unit,
+) {
+    val context = LocalContext.current
+    var showCalendars by remember { mutableStateOf(false) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.all { it }) {
+            onLoadCalendars()
+            showCalendars = true
+        } else {
+            permissionDenied = true
+        }
+    }
+    val openPicker = {
+        val permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+            onLoadCalendars()
+            showCalendars = true
+        } else {
+            permissionLauncher.launch(permissions)
+        }
+    }
+    TextButton(onClick = openPicker) { Text("캘린더", fontWeight = FontWeight.SemiBold) }
+    if (showCalendars) {
+        AlertDialog(
+            onDismissRequest = { showCalendars = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("Google 캘린더 선택", color = Teal, fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.googleCalendars.isEmpty()) {
+                        Text("동기화 가능한 Google 캘린더를 불러오는 중이거나 등록된 캘린더가 없습니다.", color = Muted)
+                    }
+                    state.googleCalendars.forEach { calendar ->
+                        OutlinedButton(
+                            onClick = { onExport(calendar.id); showCalendars = false },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(calendar.name, color = Ink, fontWeight = FontWeight.Bold)
+                                Text(calendar.accountName, color = Muted, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showCalendars = false }) { Text("닫기") } },
+        )
+    }
+    if (permissionDenied) {
+        AlertDialog(
+            onDismissRequest = { permissionDenied = false },
+            title = { Text("캘린더 권한 필요") },
+            text = { Text("여담 일정을 Google 캘린더에 내보내려면 캘린더 읽기·쓰기 권한이 필요합니다.") },
+            confirmButton = { TextButton(onClick = { permissionDenied = false }) { Text("확인") } },
+        )
+    }
+    state.calendarExportMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = onClearMessage,
+            title = { Text("Google 캘린더") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = onClearMessage) { Text("확인") } },
+        )
     }
 }
 
@@ -1220,7 +1500,7 @@ private fun CalendarDateField(label: String, date: LocalDate, onDateSelected: (L
                 modifier = Modifier.weight(1f),
                 color = Ink,
             )
-            Text("달력", color = Teal, fontWeight = FontWeight.Bold)
+            Icon(Icons.Outlined.DateRange, contentDescription = "날짜 선택", tint = Teal)
         }
     }
     if (showPicker) {
@@ -1249,46 +1529,63 @@ private fun CalendarDateField(label: String, date: LocalDate, onDateSelected: (L
 @Composable
 private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItemRequest) -> Unit) {
     val initialWindow = remember(trip.id, trip.items) { nextItineraryWindow(trip) }
+    val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
+    val initialStart = remember(initialWindow.first) { Instant.parse(initialWindow.first).atZone(zoneId) }
+    val initialEnd = remember(initialWindow.second) { Instant.parse(initialWindow.second).atZone(zoneId) }
     var title by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var memo by remember { mutableStateOf("") }
-    var startsAt by remember { mutableStateOf(initialWindow.first) }
-    var endsAt by remember { mutableStateOf(initialWindow.second) }
+    var startDate by remember { mutableStateOf(initialStart.toLocalDate().toString()) }
+    var startTime by remember { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
+    var endDate by remember { mutableStateOf(initialEnd.toLocalDate().toString()) }
+    var endTime by remember { mutableStateOf(initialEnd.toLocalTime().withSecond(0).withNano(0)) }
     var before by remember { mutableStateOf("30") }
-    InputDialog("일정 추가", onDismiss, title.isNotBlank() && startsAt.isNotBlank() && endsAt.isNotBlank(), {
+    val startsAt = itineraryInstant(startDate, startTime, zoneId)
+    val endsAt = itineraryInstant(endDate, endTime, zoneId)
+    val validWindow = startsAt != null && endsAt != null && Instant.parse(endsAt).isAfter(Instant.parse(startsAt))
+    val beforeMinutes = before.toIntOrNull()
+    val validNotification = beforeMinutes != null && beforeMinutes in 0..10080
+    InputDialog("일정 추가", onDismiss, title.isNotBlank() && validWindow && validNotification, {
         onSave(
             CreateItemRequest(
                 title = title,
                 place = place.ifBlank { null },
                 memo = memo.ifBlank { null },
-                scheduledAt = startsAt,
-                endsAt = endsAt,
-                notificationMinutesBefore = before.toIntOrNull() ?: 0,
+                scheduledAt = startsAt!!,
+                endsAt = endsAt!!,
+                notificationMinutesBefore = beforeMinutes ?: 0,
             ),
         )
     }) {
         Field(title, { title = it }, "일정 이름")
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
-        Field(startsAt, { startsAt = it }, "시작 시각 (ISO-8601)")
-        Field(endsAt, { endsAt = it }, "종료 시각 (ISO-8601)")
-        Field(before, { before = it }, "몇 분 전 알림")
+        ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
+        ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
+        MinuteBeforeField(before) { before = it }
     }
 }
 
 @Composable
 private fun EditItemDialog(
     item: ItineraryItem,
+    zoneId: ZoneId,
     onDismiss: () -> Unit,
     onSave: (CreateItemRequest) -> Unit,
 ) {
+    val initialStart = remember(item.id) { Instant.parse(item.scheduledAt).atZone(zoneId) }
+    val initialEnd = remember(item.id) { Instant.parse(item.endsAt).atZone(zoneId) }
     var title by remember(item.id) { mutableStateOf(item.title) }
     var place by remember(item.id) { mutableStateOf(item.place.orEmpty()) }
     var memo by remember(item.id) { mutableStateOf(item.memo.orEmpty()) }
-    var startsAt by remember(item.id) { mutableStateOf(item.scheduledAt) }
-    var endsAt by remember(item.id) { mutableStateOf(item.endsAt) }
+    var startDate by remember(item.id) { mutableStateOf(initialStart.toLocalDate().toString()) }
+    var startTime by remember(item.id) { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
+    var endDate by remember(item.id) { mutableStateOf(initialEnd.toLocalDate().toString()) }
+    var endTime by remember(item.id) { mutableStateOf(initialEnd.toLocalTime().withSecond(0).withNano(0)) }
     var notificationEnabled by remember(item.id) { mutableStateOf(item.notificationEnabled) }
     var before by remember(item.id) { mutableStateOf(item.notificationMinutesBefore.toString()) }
+    val startsAt = itineraryInstant(startDate, startTime, zoneId)
+    val endsAt = itineraryInstant(endDate, endTime, zoneId)
     val hasChanges = title != item.title ||
         place != item.place.orEmpty() ||
         memo != item.memo.orEmpty() ||
@@ -1296,8 +1593,10 @@ private fun EditItemDialog(
         endsAt != item.endsAt ||
         notificationEnabled != item.notificationEnabled ||
         before.toIntOrNull() != item.notificationMinutesBefore
-    val validWindow = runCatching { Instant.parse(endsAt).isAfter(Instant.parse(startsAt)) }.getOrDefault(false)
-    val canSave = title.isNotBlank() && validWindow && before.toIntOrNull() != null && hasChanges
+    val validWindow = startsAt != null && endsAt != null && Instant.parse(endsAt).isAfter(Instant.parse(startsAt))
+    val beforeMinutes = before.toIntOrNull()
+    val validNotification = beforeMinutes != null && beforeMinutes in 0..10080
+    val canSave = title.isNotBlank() && validWindow && validNotification && hasChanges
 
     InputDialog("일정 수정", onDismiss, canSave, {
         onSave(
@@ -1305,23 +1604,150 @@ private fun EditItemDialog(
                 title = title,
                 place = place.ifBlank { null },
                 memo = memo.ifBlank { null },
-                scheduledAt = startsAt,
-                endsAt = endsAt,
+                scheduledAt = startsAt!!,
+                endsAt = endsAt!!,
                 notificationEnabled = notificationEnabled,
-                notificationMinutesBefore = before.toInt(),
+                notificationMinutesBefore = beforeMinutes ?: 0,
             ),
         )
     }) {
         Field(title, { title = it }, "일정 이름")
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
-        Field(startsAt, { startsAt = it }, "시작 시각 (ISO-8601)")
-        Field(endsAt, { endsAt = it }, "종료 시각 (ISO-8601)")
+        ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
+        ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("일정 알림", modifier = Modifier.weight(1f), color = Ink, fontWeight = FontWeight.SemiBold)
             Switch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
         }
-        Field(before, { before = it }, "몇 분 전 알림")
+        MinuteBeforeField(before) { before = it }
+    }
+}
+
+private fun itineraryInstant(date: String, time: LocalTime, zoneId: ZoneId): String? = runCatching {
+    LocalDate.parse(date).atTime(time).atZone(zoneId).toInstant().toString()
+}.getOrNull()
+
+@Composable
+private fun ScheduleDateTimeFields(
+    label: String,
+    date: String,
+    onDateChange: (String) -> Unit,
+    time: LocalTime,
+    onTimeChange: (LocalTime) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, modifier = Modifier.padding(start = 6.dp), color = Teal, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ScheduleDateField(date, onDateChange, Modifier.weight(1.6f))
+            TimeSpinnerField(time, onTimeChange, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ScheduleDateField(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    var showPicker by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = { if (it.length <= 10) onChange(it) },
+        modifier = modifier,
+        singleLine = true,
+        placeholder = { Text("YYYY-MM-DD") },
+        trailingIcon = {
+            IconButton(onClick = { showPicker = true }) {
+                Icon(Icons.Outlined.DateRange, contentDescription = "날짜 선택", tint = Teal)
+            }
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        shape = RoundedCornerShape(16.dp),
+        colors = yeodamFieldColors(),
+    )
+    if (showPicker) {
+        val initialDate = runCatching { LocalDate.parse(value) }.getOrElse { LocalDate.now() }
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let {
+                        onChange(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                    }
+                    showPicker = false
+                }) { Text("선택") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("취소") } },
+        ) { DatePicker(state = pickerState) }
+    }
+}
+
+@Composable
+private fun TimeSpinnerField(time: LocalTime, onTimeChange: (LocalTime) -> Unit, modifier: Modifier = Modifier) {
+    var showPicker by remember { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = { showPicker = true },
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Border),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = FieldBackground),
+    ) { Text(time.format(DateTimeFormatter.ofPattern("HH:mm")), color = Ink, fontWeight = FontWeight.Bold) }
+    if (showPicker) {
+        var hour by remember(time, showPicker) { mutableIntStateOf(time.hour) }
+        var minute by remember(time, showPicker) { mutableIntStateOf(time.minute) }
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            title = { Text("시간 선택", color = Teal, fontWeight = FontWeight.ExtraBold) },
+            text = {
+                AndroidView(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    factory = { context ->
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = android.view.Gravity.CENTER
+                            addView(NumberPicker(context).apply {
+                                minValue = 0
+                                maxValue = 23
+                                value = hour
+                                wrapSelectorWheel = true
+                                setFormatter { "%02d".format(it) }
+                                setOnValueChangedListener { _, _, newValue -> hour = newValue }
+                            })
+                            addView(NumberPicker(context).apply {
+                                minValue = 0
+                                maxValue = 59
+                                value = minute
+                                wrapSelectorWheel = true
+                                setFormatter { "%02d".format(it) }
+                                setOnValueChangedListener { _, _, newValue -> minute = newValue }
+                            })
+                        }
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onTimeChange(LocalTime.of(hour, minute)); showPicker = false }) { Text("선택") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("취소") } },
+        )
+    }
+}
+
+@Composable
+private fun MinuteBeforeField(value: String, onChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("알림", modifier = Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelMedium, color = Muted)
+        OutlinedTextField(
+            value = value,
+            onValueChange = { if (it.all(Char::isDigit)) onChange(it) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            suffix = { Text("분 전", color = Muted) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp),
+            colors = yeodamFieldColors(),
+        )
     }
 }
 
@@ -1456,7 +1882,13 @@ private fun InputDialog(title: String, onDismiss: () -> Unit, enabled: Boolean, 
         containerColor = Color.White,
         tonalElevation = 10.dp,
         title = { Text(title, color = Teal, fontWeight = FontWeight.ExtraBold) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content) },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
+        },
         confirmButton = { Button(onClick = onSave, enabled = enabled, shape = RoundedCornerShape(14.dp)) { Text("저장") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
