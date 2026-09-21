@@ -20,6 +20,7 @@ class TripReview(
 
 interface TripReviewRepository : org.springframework.data.jpa.repository.JpaRepository<TripReview, UUID> {
     fun findByItemId(itemId: UUID): TripReview?
+    fun findAllByItemIdIn(itemIds: Collection<UUID>): List<TripReview>
 }
 
 data class SaveReviewRequest(

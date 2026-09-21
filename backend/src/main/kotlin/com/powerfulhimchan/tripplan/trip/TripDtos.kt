@@ -1,6 +1,9 @@
 package com.powerfulhimchan.tripplan.trip
 
 import jakarta.validation.constraints.*
+import com.powerfulhimchan.tripplan.review.ReviewResponse
+import com.powerfulhimchan.tripplan.review.TripOverallReviewResponse
+import com.powerfulhimchan.tripplan.sharing.TripMemberResponse
 import java.time.*
 import java.util.UUID
 
@@ -56,4 +59,11 @@ data class TripResponse(
     val endDate: LocalDate,
     val timezone: String,
     val items: List<ItineraryItemResponse>,
+)
+
+data class TripDetailResponse(
+    val trip: TripResponse,
+    val reviews: List<ReviewResponse>,
+    val overallReview: TripOverallReviewResponse?,
+    val members: List<TripMemberResponse>,
 )

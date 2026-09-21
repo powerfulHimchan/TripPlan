@@ -23,6 +23,7 @@ class ReviewPhoto(
 
 interface ReviewPhotoRepository : org.springframework.data.jpa.repository.JpaRepository<ReviewPhoto, UUID> {
     fun findAllByReviewIdOrderByCreatedAt(reviewId: UUID): List<ReviewPhoto>
+    fun findAllByReviewIdInOrderByCreatedAt(reviewIds: Collection<UUID>): List<ReviewPhoto>
     fun findByIdAndReviewId(id: UUID, reviewId: UUID): ReviewPhoto?
     fun countByReviewId(reviewId: UUID): Long
 }

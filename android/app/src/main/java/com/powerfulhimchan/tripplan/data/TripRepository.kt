@@ -37,6 +37,7 @@ class TripRepository(private val tokenStore: TokenStore) {
     fun logout() = tokenStore.clear()
 
     suspend fun trips() = api.getTrips()
+    suspend fun tripDetail(tripId: String) = api.getTripDetail(tripId)
     suspend fun createTrip(request: CreateTripRequest) = api.createTrip(request)
     suspend fun addItem(tripId: String, request: CreateItemRequest) = api.addItem(tripId, request)
     suspend fun updateItem(itemId: String, request: CreateItemRequest) = api.updateItem(itemId, request)

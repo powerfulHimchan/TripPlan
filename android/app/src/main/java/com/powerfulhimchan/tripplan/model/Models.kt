@@ -100,6 +100,13 @@ data class Invitation(
 )
 data class TripMember(val userId: String, val email: String, val owner: Boolean)
 
+data class TripDetail(
+    val trip: Trip,
+    val reviews: List<Review> = emptyList(),
+    val overallReview: TripOverallReview?,
+    val members: List<TripMember> = emptyList(),
+)
+
 data class AppVersionResponse(
     val platform: String,
     val currentVersionCode: Int,

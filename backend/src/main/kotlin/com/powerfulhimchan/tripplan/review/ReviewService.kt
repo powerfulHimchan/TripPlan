@@ -38,6 +38,21 @@ class ReviewService(
         return reviews.findByItemId(itemId)?.toResponse()
     }
 
+    @Transactional(readOnly = true)
+    fun getAllForTrip(userId: String, tripId: UUID): List<ReviewResponse> {
+        trips.findAccessible(tripId, userId) ?: throw EntityNotFoundException("여행을 찾을 수 없습니다.")
+        val completedItemIds = items.findAllByTripIdOrderByScheduledAt(tripId)
+            .filterNot { Instant.now().isBefore(it.endsAt) }
+            .map { it.id }
+        if (completedItemIds.isEmpty()) return emptyList()
+
+        val tripReviews = reviews.findAllByItemIdIn(completedItemIds)
+        if (tripReviews.isEmpty()) return emptyList()
+        val photosByReviewId = photos.findAllByReviewIdInOrderByCreatedAt(tripReviews.map { it.id })
+            .groupBy { it.reviewId }
+        return tripReviews.map { review -> review.toResponse(photosByReviewId[review.id].orEmpty()) }
+    }
+
     @Transactional
     fun addPhotos(userId: String, itemId: UUID, files: List<MultipartFile>): ReviewResponse {
         val review = accessibleReview(userId, itemId)
@@ -100,9 +115,9 @@ class ReviewService(
         require(file.contentType in ALLOWED_CONTENT_TYPES) { "JPG, PNG, WEBP, HEIC 사진만 등록할 수 있습니다." }
     }
 
-    private fun TripReview.toResponse() = ReviewResponse(
+    private fun TripReview.toResponse(reviewPhotos: List<ReviewPhoto> = photos.findAllByReviewIdOrderByCreatedAt(id)) = ReviewResponse(
         id, itemId, rating, content, updatedAt,
-        photos.findAllByReviewIdOrderByCreatedAt(id).map { ReviewPhotoResponse(it.id, it.originalName, it.contentType, it.sizeBytes) },
+        reviewPhotos.map { ReviewPhotoResponse(it.id, it.originalName, it.contentType, it.sizeBytes) },
     )
 
     companion object {
