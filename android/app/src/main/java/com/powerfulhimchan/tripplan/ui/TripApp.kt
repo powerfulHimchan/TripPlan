@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -543,6 +544,16 @@ private fun TripDetailScreen(
     onInvite: (String) -> Unit,
 ) {
     val trip = state.selected ?: return
+    if (tripProgress(trip) == TripProgress.COMPLETED) {
+        CompletedTripAlbumScreen(
+            state = state,
+            onBack = onBack,
+            onSaveReview = onSaveReview,
+            onDeleteReviewPhoto = onDeleteReviewPhoto,
+            onInvite = onInvite,
+        )
+        return
+    }
     BackHandler(onBack = onBack)
     val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
     var now by remember { mutableStateOf(Instant.now()) }
@@ -553,7 +564,6 @@ private fun TripDetailScreen(
         }
     }
     val canInvite = state.members.any { it.owner && it.email == state.email }
-    val tripEnded = tripProgress(trip) == TripProgress.COMPLETED
     val activeItem = trip.items.firstOrNull { scheduleProgress(it, now) == ScheduleProgress.IN_PROGRESS }
     val hasCompletedItem = trip.items.any { scheduleProgress(it, now) == ScheduleProgress.COMPLETED }
     val timelineGroups = remember(trip.items, trip.timezone) {
@@ -578,14 +588,12 @@ private fun TripDetailScreen(
                 )
             },
             floatingActionButton = {
-                if (!tripEnded) {
-                    ExtendedFloatingActionButton(
-                        onClick = { showItem = true },
-                        containerColor = Coral,
-                        contentColor = Color.White,
-                        shape = RoundedCornerShape(18.dp),
-                    ) { Text("＋ 일정 추가", fontWeight = FontWeight.Bold) }
-                }
+                ExtendedFloatingActionButton(
+                    onClick = { showItem = true },
+                    containerColor = Coral,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Text("＋ 일정 추가", fontWeight = FontWeight.Bold) }
             },
         ) { padding ->
             LazyColumn(
@@ -697,10 +705,290 @@ private fun TripDetailScreen(
             }
         }
     }
-    if (showItem && !tripEnded) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
+    if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
     if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
         onInvite(it)
         showSharing = false
+    }
+}
+
+@Composable
+private fun CompletedTripAlbumScreen(
+    state: TripUiState,
+    onBack: () -> Unit,
+    onSaveReview: (String, Int, String, List<Uri>) -> Unit,
+    onDeleteReviewPhoto: (String, String) -> Unit,
+    onInvite: (String) -> Unit,
+) {
+    val trip = state.selected ?: return
+    BackHandler(onBack = onBack)
+    val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
+    val reviewedCount = trip.items.count { state.reviews[it.id] != null }
+    val albumPhotos = trip.items.flatMap { item ->
+        state.reviews[item.id]?.photos.orEmpty().map { photo -> item to photo }
+    }
+    val groupedItems = remember(trip.items, trip.timezone) {
+        trip.items.groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
+    }
+    val canInvite = state.members.any { it.owner && it.email == state.email }
+    var editingItemId by remember(trip.id) { mutableStateOf<String?>(null) }
+    var showSharing by remember { mutableStateOf(false) }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFFFF1EE), PaleSky, Color.White))),
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    colors = yeodamTopBarColors(),
+                    title = { Text("${trip.title} 앨범", fontWeight = FontWeight.ExtraBold, color = Ink) },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ 지난 여행", fontWeight = FontWeight.SemiBold) } },
+                    actions = { TextButton(onClick = { showSharing = true }) { Text("함께 ${state.members.size}", fontWeight = FontWeight.SemiBold) } },
+                )
+            },
+        ) { padding ->
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(Brush.linearGradient(listOf(Coral, Color(0xFFFFA968))))
+                            .padding(22.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.2f)) {
+                                Text("우리의 지난 여행", modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp), color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Text(trip.destination, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                            Text("${trip.startDate}  —  ${trip.endDate}", color = Color.White.copy(alpha = 0.9f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AlbumStat("후기", "$reviewedCount/${trip.items.size}")
+                                AlbumStat("사진", "${albumPhotos.size}장")
+                                AlbumStat("일정", "${trip.items.size}개")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Text("여행 사진", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Text("계획마다 남긴 사진을 한곳에 모았어요.", color = Muted)
+                }
+
+                if (albumPhotos.isEmpty()) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Border),
+                        ) {
+                            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("아직 앨범에 사진이 없어요", fontWeight = FontWeight.Bold, color = Ink)
+                                Text("아래 일정의 후기에 사진을 추가해보세요.", color = Muted)
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(albumPhotos, key = { it.second.id }) { (item, photo) ->
+                                Column(Modifier.width(164.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    AlbumPhoto(
+                                        bytes = state.reviewPhotoBytes[photo.id],
+                                        contentDescription = photo.originalName,
+                                        modifier = Modifier.fillMaxWidth().height(112.dp),
+                                    )
+                                    Text(item.title, maxLines = 1, color = Ink, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(2.dp))
+                    Text("날짜별 여담", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Text("일정마다 기억에 남은 이야기를 완성해보세요.", color = Muted)
+                }
+
+                if (trip.items.isEmpty()) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Border),
+                        ) {
+                            Text("등록된 일정이 없는 여행입니다.", modifier = Modifier.padding(24.dp), color = Muted)
+                        }
+                    }
+                }
+
+                groupedItems.forEach { (date, dayItems) ->
+                    item(key = "album-date-$date") {
+                        Text(
+                            date.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)),
+                            color = Teal,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    items(dayItems, key = { "album-item-${it.id}" }) { item ->
+                        AlbumReviewCard(
+                            item = item,
+                            zoneId = zoneId,
+                            review = state.reviews[item.id],
+                            photoBytes = state.reviewPhotoBytes,
+                            editing = editingItemId == item.id,
+                            onEdit = { editingItemId = if (editingItemId == item.id) null else item.id },
+                            onSaveReview = { rating, content, photos ->
+                                onSaveReview(item.id, rating, content, photos)
+                                editingItemId = null
+                            },
+                            onDeletePhoto = { photoId -> onDeleteReviewPhoto(item.id, photoId) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
+        onInvite(it)
+        showSharing = false
+    }
+}
+
+@Composable
+private fun RowScope.AlbumStat(label: String, value: String) {
+    Surface(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.18f),
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold)
+            Text(label, color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun AlbumReviewCard(
+    item: ItineraryItem,
+    zoneId: ZoneId,
+    review: Review?,
+    photoBytes: Map<String, ByteArray>,
+    editing: Boolean,
+    onEdit: () -> Unit,
+    onSaveReview: (Int, String, List<Uri>) -> Unit,
+    onDeletePhoto: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, if (review == null) Coral.copy(alpha = 0.4f) else Border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(itineraryTimeRange(item, zoneId), color = Teal, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = (if (review == null) Coral else Leaf).copy(alpha = 0.14f),
+                    ) {
+                        Text(
+                            if (review == null) "후기 필요" else "후기 완료",
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            color = if (review == null) Coral else Leaf,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Ink)
+                item.place?.let { Text("장소 · $it", color = Muted) }
+                item.memo?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+            }
+
+            if (editing) {
+                HorizontalDivider(color = Border)
+                ReviewEditor(review, photoBytes, onSaveReview, onDeletePhoto)
+                TextButton(onClick = onEdit, modifier = Modifier.align(Alignment.End).padding(end = 10.dp, bottom = 6.dp)) {
+                    Text("작성 닫기", color = Muted)
+                }
+            } else if (review == null) {
+                Surface(
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFFF1EE),
+                ) {
+                    Text("이 일정에서 기억하고 싶은 순간을 남겨보세요.", modifier = Modifier.padding(14.dp), color = Muted)
+                }
+                Button(
+                    onClick = onEdit,
+                    modifier = Modifier.align(Alignment.End).padding(end = 18.dp, bottom = 18.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("후기 작성") }
+            } else {
+                Row(Modifier.padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    repeat(5) { index -> Text(if (index < review.rating) "★" else "☆", color = Coral, fontSize = 22.sp) }
+                }
+                Text(review.content, modifier = Modifier.padding(horizontal = 18.dp), color = Ink, lineHeight = 21.sp)
+                if (review.photos.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(review.photos, key = { it.id }) { photo ->
+                            AlbumPhoto(
+                                bytes = photoBytes[photo.id],
+                                contentDescription = photo.originalName,
+                                modifier = Modifier.size(92.dp),
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.align(Alignment.End).padding(end = 18.dp, bottom = 18.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Teal),
+                ) { Text("후기 수정") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumPhoto(bytes: ByteArray?, contentDescription: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = Sky) {
+        val bitmap = remember(bytes) {
+            bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 }) }
+        }
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("사진 불러오는 중", color = Muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 
