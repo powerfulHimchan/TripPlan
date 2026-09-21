@@ -55,10 +55,9 @@ class TripDetailServiceTest @Autowired constructor(
         assertThat(detail.trip.items).hasSize(2)
         assertThat(detail.reviews.map { it.itemId }).containsExactly(completedItem.id)
         assertThat(detail.reviews.single().content).isEqualTo("기분 좋은 시작")
-        assertThat(detail.members).single().satisfies { member ->
-            assertThat(member.email).isEqualTo(owner.email)
-            assertThat(member.owner).isTrue()
-        }
+        val member = detail.members.single()
+        assertThat(member.email).isEqualTo(owner.email)
+        assertThat(member.owner).isTrue()
         assertThat(detail.overallReview).isNull()
     }
 }
