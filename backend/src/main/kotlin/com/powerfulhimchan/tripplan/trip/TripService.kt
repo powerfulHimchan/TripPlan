@@ -3,6 +3,7 @@ package com.powerfulhimchan.tripplan.trip
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 
