@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.LruCache
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import androidx.activity.compose.BackHandler
@@ -60,6 +61,8 @@ import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.R
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -77,6 +80,33 @@ private val Leaf = Color(0xFF55A97B)
 private val Ink = Color(0xFF20343D)
 private val Muted = Color(0xFF6A7F88)
 private val Border = Color(0xFFDCE8EC)
+
+private data class ItineraryCategoryStyle(
+    val value: String,
+    val label: String,
+    val containerColor: Color,
+    val accentColor: Color,
+)
+
+private val ItineraryCategoryStyles = listOf(
+    ItineraryCategoryStyle("ACCOMMODATION", "숙박", Color(0xFFF1EAFB), Color(0xFF7953A9)),
+    ItineraryCategoryStyle("TRANSPORTATION", "교통", Color(0xFFE6F2FF), Color(0xFF397DB8)),
+    ItineraryCategoryStyle("SIGHTSEEING", "관광", Color(0xFFE8F6EC), Color(0xFF3D8B5E)),
+    ItineraryCategoryStyle("FOOD", "식사", Color(0xFFFFF0E3), Color(0xFFC66A2B)),
+    ItineraryCategoryStyle("CAFE", "카페·디저트", Color(0xFFFBECEF), Color(0xFFA8556A)),
+    ItineraryCategoryStyle("ACTIVITY", "체험·액티비티", Color(0xFFFFECE8), Color(0xFFD65F4E)),
+    ItineraryCategoryStyle("SHOPPING", "쇼핑", Color(0xFFF3ECFA), Color(0xFF8B5AA8)),
+    ItineraryCategoryStyle("CULTURE", "공연·문화", Color(0xFFECEFFD), Color(0xFF5267B2)),
+    ItineraryCategoryStyle("REST", "휴식", Color(0xFFE5F5F3), Color(0xFF34877E)),
+    ItineraryCategoryStyle("OTHER", "기타", Color(0xFFF1F4F5), Color(0xFF66777E)),
+)
+
+private fun itineraryCategoryStyle(value: String) =
+    ItineraryCategoryStyles.firstOrNull { it.value == value } ?: ItineraryCategoryStyles.last()
+
+private val photoBitmapCache = object : LruCache<String, android.graphics.Bitmap>(24 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
+}
 
 @Composable
 fun TripApp(viewModel: TripViewModel) {
@@ -782,7 +812,6 @@ private fun TripDetailScreen(
                         color = Ink,
                     )
                     when {
-                        showTimeline -> Text("날짜별 흐름과 현재 진행 상태를 한눈에 확인하세요.", color = Muted)
                         hasCompletedItem -> Text("종료된 일정의 기억에 남은 이야기를 기록해보세요.", color = Muted)
                     }
                 }
@@ -863,9 +892,13 @@ private fun CompletedTripAlbumScreen(
     val trip = state.selected ?: return
     BackHandler(onBack = onBack)
     val zoneId = remember(trip.timezone) { ZoneId.of(trip.timezone) }
-    val reviewedCount = trip.items.count { state.reviews[it.id] != null }
-    val albumPhotos = trip.items.flatMap { item ->
-        state.reviews[item.id]?.photos.orEmpty().map { photo -> item to photo }
+    val reviewedCount = remember(trip.items, state.reviews) {
+        trip.items.count { state.reviews[it.id] != null }
+    }
+    val albumPhotos = remember(trip.items, state.reviews) {
+        trip.items.flatMap { item ->
+            state.reviews[item.id]?.photos.orEmpty().map { photo -> item to photo }
+        }
     }
     val groupedItems = remember(trip.items, trip.timezone) {
         trip.items.groupBy { Instant.parse(it.scheduledAt).atZone(zoneId).toLocalDate() }
@@ -966,6 +999,7 @@ private fun CompletedTripAlbumScreen(
                             items(albumPhotos, key = { it.second.id }) { (item, photo) ->
                                 Column(Modifier.width(164.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                     AlbumPhoto(
+                                        photoId = photo.id,
                                         bytes = state.reviewPhotoBytes[photo.id],
                                         contentDescription = photo.originalName,
                                         modifier = Modifier.fillMaxWidth().height(112.dp),
@@ -1070,6 +1104,7 @@ private fun TripOverallReviewCard(
                     if (review.content.isNotBlank()) Text(review.content, color = Ink, lineHeight = 21.sp)
                     review.representativePhoto?.let { photo ->
                         AlbumPhoto(
+                            photoId = photo.id,
                             bytes = photoBytes[photo.id],
                             contentDescription = photo.originalName,
                             modifier = Modifier.fillMaxWidth().height(180.dp),
@@ -1125,6 +1160,7 @@ private fun TripOverallReviewEditor(
                 ) {
                     Column {
                         AlbumPhoto(
+                            photoId = photo.id,
                             bytes = photoBytes[photo.id],
                             contentDescription = photo.originalName,
                             modifier = Modifier.fillMaxWidth().height(82.dp),
@@ -1169,17 +1205,21 @@ private fun AlbumReviewCard(
     onEdit: () -> Unit,
     onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
+    val category = itineraryCategoryStyle(item.category)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = category.containerColor),
         border = BorderStroke(1.dp, if (review == null) Coral.copy(alpha = 0.4f) else Border),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(itineraryTimeRange(item, zoneId), color = Teal, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(itineraryTimeRange(item, zoneId), color = category.accentColor, fontWeight = FontWeight.ExtraBold)
+                        CategoryBadge(category)
+                    }
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = (if (review == null) Coral else Leaf).copy(alpha = 0.14f),
@@ -1232,6 +1272,7 @@ private fun AlbumReviewCard(
                     ) {
                         items(review.photos, key = { it.id }) { photo ->
                             AlbumPhoto(
+                                photoId = photo.id,
                                 bytes = photoBytes[photo.id],
                                 contentDescription = photo.originalName,
                                 modifier = Modifier.size(92.dp),
@@ -1251,10 +1292,15 @@ private fun AlbumReviewCard(
 }
 
 @Composable
-private fun AlbumPhoto(bytes: ByteArray?, contentDescription: String, modifier: Modifier = Modifier) {
+private fun AlbumPhoto(photoId: String, bytes: ByteArray?, contentDescription: String, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = Sky) {
-        val bitmap = remember(bytes) {
-            bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 }) }
+        val bitmap by produceState(photoBitmapCache.get(photoId), photoId, bytes) {
+            if (value == null && bytes != null) {
+                value = withContext(Dispatchers.Default) {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                        ?.also { photoBitmapCache.put(photoId, it) }
+                }
+            }
         }
         if (bitmap != null) {
             Image(
@@ -1417,6 +1463,7 @@ private fun TimelineItemCard(
     onEdit: () -> Unit,
 ) {
     val progress = scheduleProgress(item, now)
+    val category = itineraryCategoryStyle(item.category)
     val accentColor = when (progress) {
         ScheduleProgress.UPCOMING -> Teal
         ScheduleProgress.IN_PROGRESS -> Coral
@@ -1433,7 +1480,7 @@ private fun TimelineItemCard(
                 .padding(bottom = if (isLast) 0.dp else 3.dp)
                 .clickable(enabled = progress == ScheduleProgress.UPCOMING, onClick = onEdit),
             shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = if (progress == ScheduleProgress.IN_PROGRESS) Color(0xFFFFF1EE) else Color.White),
+            colors = CardDefaults.cardColors(containerColor = category.containerColor),
             border = BorderStroke(if (progress == ScheduleProgress.IN_PROGRESS) 1.5.dp else 1.dp, if (progress == ScheduleProgress.IN_PROGRESS) Coral else Border),
             elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 3.dp else 0.dp),
         ) {
@@ -1450,7 +1497,17 @@ private fun TimelineItemCard(
                     modifier = Modifier.width(96.dp),
                 )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(item.title, maxLines = 1, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = Ink)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CategoryBadge(category, compact = true)
+                        Text(
+                            item.title,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Ink,
+                        )
+                    }
                     item.place?.let {
                         Text("장소 · $it", maxLines = 1, color = Muted, style = MaterialTheme.typography.labelSmall)
                     }
@@ -1482,6 +1539,7 @@ private fun ItineraryCard(
     onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
     val progress = scheduleProgress(item, now)
+    val category = itineraryCategoryStyle(item.category)
     val dateLabel = Instant.parse(item.scheduledAt).atZone(zoneId).format(DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN))
     val progressColor = when (progress) {
         ScheduleProgress.UPCOMING -> Teal
@@ -1493,17 +1551,20 @@ private fun ItineraryCard(
             .fillMaxWidth()
             .clickable(enabled = progress == ScheduleProgress.UPCOMING, onClick = onEdit),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = category.containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         border = BorderStroke(1.dp, Border.copy(alpha = 0.7f)),
     ) {
         Column {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(width = 5.dp, height = 54.dp).clip(RoundedCornerShape(50)).background(if (item.notificationEnabled) Coral else Border))
+                Box(Modifier.size(width = 5.dp, height = 54.dp).clip(RoundedCornerShape(50)).background(category.accentColor))
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Surface(shape = RoundedCornerShape(50), color = progressColor.copy(alpha = 0.14f)) {
-                        Text(progress.label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp), color = progressColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CategoryBadge(category)
+                        Surface(shape = RoundedCornerShape(50), color = progressColor.copy(alpha = 0.14f)) {
+                            Text(progress.label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp), color = progressColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
                     }
                     Spacer(Modifier.height(5.dp))
                     Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
@@ -1525,6 +1586,20 @@ private fun ItineraryCard(
                 ReviewEditor(review, photoBytes, onSaveReview)
             }
         }
+    }
+}
+
+@Composable
+private fun CategoryBadge(category: ItineraryCategoryStyle, compact: Boolean = false) {
+    Surface(shape = RoundedCornerShape(50), color = category.accentColor.copy(alpha = 0.15f)) {
+        Text(
+            category.label,
+            modifier = Modifier.padding(horizontal = if (compact) 6.dp else 9.dp, vertical = if (compact) 2.dp else 3.dp),
+            color = category.accentColor,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
 
@@ -1625,6 +1700,7 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
     var title by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var memo by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("OTHER") }
     var startDate by remember { mutableStateOf(initialStart.toLocalDate().toString()) }
     var startTime by remember { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
     var endDate by remember { mutableStateOf(initialEnd.toLocalDate().toString()) }
@@ -1644,12 +1720,14 @@ private fun AddItemDialog(trip: Trip, onDismiss: () -> Unit, onSave: (CreateItem
                 scheduledAt = startsAt!!,
                 endsAt = endsAt!!,
                 notificationMinutesBefore = beforeMinutes ?: 0,
+                category = category,
             ),
         )
     }) {
         Field(title, { title = it }, "일정 이름")
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
+        CategorySelector(category) { category = it }
         ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
         ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         MinuteBeforeField(before) { before = it }
@@ -1668,6 +1746,7 @@ private fun EditItemDialog(
     var title by remember(item.id) { mutableStateOf(item.title) }
     var place by remember(item.id) { mutableStateOf(item.place.orEmpty()) }
     var memo by remember(item.id) { mutableStateOf(item.memo.orEmpty()) }
+    var category by remember(item.id) { mutableStateOf(item.category) }
     var startDate by remember(item.id) { mutableStateOf(initialStart.toLocalDate().toString()) }
     var startTime by remember(item.id) { mutableStateOf(initialStart.toLocalTime().withSecond(0).withNano(0)) }
     var endDate by remember(item.id) { mutableStateOf(initialEnd.toLocalDate().toString()) }
@@ -1679,6 +1758,7 @@ private fun EditItemDialog(
     val hasChanges = title != item.title ||
         place != item.place.orEmpty() ||
         memo != item.memo.orEmpty() ||
+        category != item.category ||
         startsAt != item.scheduledAt ||
         endsAt != item.endsAt ||
         notificationEnabled != item.notificationEnabled ||
@@ -1698,12 +1778,14 @@ private fun EditItemDialog(
                 endsAt = endsAt!!,
                 notificationEnabled = notificationEnabled,
                 notificationMinutesBefore = beforeMinutes ?: 0,
+                category = category,
             ),
         )
     }) {
         Field(title, { title = it }, "일정 이름")
         Field(place, { place = it }, "장소 (선택)")
         Field(memo, { memo = it }, "메모 (선택)")
+        CategorySelector(category) { category = it }
         ScheduleDateTimeFields("시작", startDate, { startDate = it }, startTime, { startTime = it })
         ScheduleDateTimeFields("종료", endDate, { endDate = it }, endTime, { endTime = it })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1711,6 +1793,42 @@ private fun EditItemDialog(
             YeodamNotificationSwitch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
         }
         MinuteBeforeField(before) { before = it }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategorySelector(selected: String, onSelected: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            "카테고리",
+            modifier = Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = Muted,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            ItineraryCategoryStyles.forEach { category ->
+                FilterChip(
+                    selected = selected == category.value,
+                    onClick = { onSelected(category.value) },
+                    label = { Text(category.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.White,
+                        selectedContainerColor = category.containerColor,
+                        selectedLabelColor = category.accentColor,
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = selected == category.value,
+                        borderColor = Border,
+                        selectedBorderColor = category.accentColor,
+                    ),
+                )
+            }
+        }
     }
 }
 
@@ -1913,6 +2031,7 @@ private fun ReviewEditor(
         Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
         visiblePhotos.forEach { photo ->
             ReviewPhotoRow(
+                photoId = photo.id,
                 name = photo.originalName,
                 bytes = photoBytes[photo.id],
                 onRemove = { removedPhotoIds = removedPhotoIds + photo.id },
@@ -1938,21 +2057,24 @@ private fun ReviewEditor(
 }
 
 @Composable
-private fun ReviewPhotoRow(name: String, bytes: ByteArray?, onRemove: () -> Unit) {
+private fun ReviewPhotoRow(photoId: String, name: String, bytes: ByteArray?, onRemove: () -> Unit) {
+    val bitmap by produceState(photoBitmapCache.get(photoId), photoId, bytes) {
+        if (value == null && bytes != null) {
+            value = withContext(Dispatchers.Default) {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+                    ?.also { photoBitmapCache.put(photoId, it) }
+            }
+        }
+    }
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, border = BorderStroke(1.dp, Border)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            bytes?.let {
-                val bitmap = remember(it) {
-                    BitmapFactory.decodeByteArray(it, 0, it.size, BitmapFactory.Options().apply { inSampleSize = 4 })
-                }
-                bitmap?.let { decoded ->
-                    Image(
-                        bitmap = decoded.asImageBitmap(),
-                        contentDescription = name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
-                    )
-                }
+            bitmap?.let { decoded ->
+                Image(
+                    bitmap = decoded.asImageBitmap(),
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+                )
             }
             Text(name, modifier = Modifier.weight(1f), maxLines = 1, color = Ink)
             TextButton(onClick = onRemove) { Text("삭제", color = Coral) }

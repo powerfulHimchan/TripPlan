@@ -14,8 +14,18 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
     @Test
     fun `여행과 일정을 생성한다`() {
         val trip = service.create("user-1", CreateTripRequest("제주 여행", "제주", LocalDate.of(2027, 5, 1), LocalDate.of(2027, 5, 3), "Asia/Seoul"))
-        val item = service.addItem("user-1", trip.id, CreateItineraryItemRequest("공항 도착", "제주공항", scheduledAt = Instant.parse("2027-05-01T01:00:00Z")))
+        val item = service.addItem(
+            "user-1",
+            trip.id,
+            CreateItineraryItemRequest(
+                "공항 도착",
+                "제주공항",
+                scheduledAt = Instant.parse("2027-05-01T01:00:00Z"),
+                category = ItineraryCategory.TRANSPORTATION,
+            ),
+        )
         assertThat(item.endsAt).isEqualTo(Instant.parse("2027-05-01T02:00:00Z"))
+        assertThat(item.category).isEqualTo(ItineraryCategory.TRANSPORTATION)
         assertThat(service.get("user-1", trip.id).items).containsExactly(item)
     }
 
@@ -90,6 +100,7 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
                 endsAt = now.plusSeconds(14_400),
                 notificationEnabled = false,
                 notificationMinutesBefore = 10,
+                category = ItineraryCategory.SIGHTSEEING,
             ),
         )
 
@@ -97,6 +108,7 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
         assertThat(updated.place).isEqualTo("서울역")
         assertThat(updated.endsAt).isEqualTo(now.plusSeconds(14_400))
         assertThat(updated.notificationEnabled).isFalse()
+        assertThat(updated.category).isEqualTo(ItineraryCategory.SIGHTSEEING)
     }
 
     @Test
