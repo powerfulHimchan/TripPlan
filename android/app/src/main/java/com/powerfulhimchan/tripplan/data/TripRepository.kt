@@ -42,7 +42,7 @@ class TripRepository(private val tokenStore: TokenStore) {
     suspend fun setNotification(item: ItineraryItem, enabled: Boolean) =
         api.updateNotification(item.id, UpdateNotificationRequest(enabled, item.notificationMinutesBefore))
     suspend fun registerDevice(token: String) = api.registerDevice(RegisterDeviceRequest(token))
-    suspend fun getReview(itemId: String) = api.getReview(itemId)
+    suspend fun getReview(itemId: String) = api.getReview(itemId).body()
     suspend fun saveReview(itemId: String, rating: Int, content: String) =
         api.saveReview(itemId, SaveReviewRequest(rating, content))
     suspend fun uploadReviewPhotos(itemId: String, uploads: List<ReviewPhotoUpload>): Review {

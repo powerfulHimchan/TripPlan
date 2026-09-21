@@ -3,6 +3,7 @@ package com.powerfulhimchan.tripplan.data
 import com.powerfulhimchan.tripplan.model.*
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.*
 
 interface TripApi {
@@ -33,7 +34,7 @@ interface TripApi {
     suspend fun registerDevice(@Body request: RegisterDeviceRequest)
 
     @GET("api/v1/items/{itemId}/review")
-    suspend fun getReview(@Path("itemId") itemId: String): Review?
+    suspend fun getReview(@Path("itemId") itemId: String): Response<Review>
 
     @PUT("api/v1/items/{itemId}/review")
     suspend fun saveReview(@Path("itemId") itemId: String, @Body request: SaveReviewRequest): Review

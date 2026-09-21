@@ -43,4 +43,25 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
             service.create("user-1", CreateTripRequest("잘못된 여행", "서울", LocalDate.of(2027, 5, 2), LocalDate.of(2027, 5, 1)))
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
+
+    @Test
+    fun `종료된 여행에는 일정을 추가할 수 없다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val trip = service.create(
+            "user-1",
+            CreateTripRequest("끝난 여행", "서울", today.minusDays(3), today.minusDays(1), "UTC"),
+        )
+
+        assertThatThrownBy {
+            service.addItem(
+                "user-1",
+                trip.id,
+                CreateItineraryItemRequest(
+                    "뒤늦게 추가한 일정",
+                    scheduledAt = today.minusDays(2).atTime(10, 0).toInstant(ZoneOffset.UTC),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("종료된 여행")
+    }
 }
