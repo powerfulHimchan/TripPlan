@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.LruCache
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import androidx.activity.compose.BackHandler
@@ -27,7 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -55,14 +54,19 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.R
+import com.powerfulhimchan.tripplan.data.TokenStore
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Headers
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -82,6 +86,12 @@ private val Ink = Color(0xFF20343D)
 private val Muted = Color(0xFF6A7F88)
 private val Border = Color(0xFFDCE8EC)
 private val WonNumberFormat = NumberFormat.getNumberInstance(Locale.KOREA)
+private val AngularShape = CutCornerShape(5.dp)
+private val AngularSmallShape = CutCornerShape(3.dp)
+
+// 기존 컴포넌트의 크기별 shape 호출을 각진 디자인 토큰으로 일괄 매핑한다.
+private fun RoundedCornerShape(size: Dp) = if (size <= 10.dp) AngularSmallShape else AngularShape
+private fun RoundedCornerShape(percent: Int) = if (percent <= 0) AngularSmallShape else AngularShape
 
 private data class ItineraryCategoryStyle(
     val value: String,
@@ -106,10 +116,6 @@ private val ItineraryCategoryStyles = listOf(
 private fun itineraryCategoryStyle(value: String) =
     ItineraryCategoryStyles.firstOrNull { it.value == value } ?: ItineraryCategoryStyles.last()
 
-private val photoBitmapCache = object : LruCache<String, android.graphics.Bitmap>(24 * 1024 * 1024) {
-    override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
-}
-
 @Composable
 fun TripApp(viewModel: TripViewModel) {
     val state by viewModel.state.collectAsState()
@@ -127,9 +133,9 @@ fun TripApp(viewModel: TripViewModel) {
             outline = Border,
         ),
         shapes = Shapes(
-            small = RoundedCornerShape(14.dp),
-            medium = RoundedCornerShape(20.dp),
-            large = RoundedCornerShape(28.dp),
+            small = AngularSmallShape,
+            medium = AngularShape,
+            large = CutCornerShape(7.dp),
         ),
     ) {
         Surface(Modifier.fillMaxSize()) {
@@ -499,9 +505,8 @@ private fun TripListScreen(
                     }
                     items(visibleTrips, key = { it.id }) { trip ->
                         val progress = tripProgress(trip)
-                        val coverBytes = state.overallReviews[trip.id]?.representativePhoto
-                            ?.let { state.overallReviewPhotoBytes[trip.id] }
-                        val hasCover = coverBytes != null
+                        val coverPhoto = state.overallReviews[trip.id]?.representativePhoto
+                        val hasCover = coverPhoto != null
                         Card(
                             onClick = { onSelect(trip) },
                             modifier = Modifier.fillMaxWidth(),
@@ -510,18 +515,13 @@ private fun TripListScreen(
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                         ) {
                             Box {
-                                coverBytes?.let { bytes ->
-                                    val bitmap = remember(bytes) {
-                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
-                                    }
-                                    bitmap?.let {
-                                        Image(
-                                            bitmap = it.asImageBitmap(),
-                                            contentDescription = "${trip.title} 대표 사진",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.matchParentSize(),
-                                        )
-                                    }
+                                coverPhoto?.let { photo ->
+                                    RemoteReviewPhoto(
+                                        itemId = photo.itemId,
+                                        photoId = photo.id,
+                                        contentDescription = "${trip.title} 대표 사진",
+                                        modifier = Modifier.matchParentSize(),
+                                    )
                                 }
                                 if (hasCover) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.46f)))
                                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -855,7 +855,6 @@ private fun TripDetailScreen(
                             item, zoneId, now, onToggle,
                             scheduleProgress(item, now) == ScheduleProgress.COMPLETED,
                             state.reviews[item.id],
-                            state.reviewPhotoBytes,
                             { editingItem = item },
                             { rating, content, photos, removedPhotoIds ->
                                 onSaveReview(item.id, rating, content, photos, removedPhotoIds)
@@ -965,7 +964,6 @@ private fun CompletedTripAlbumScreen(
                     TripOverallReviewCard(
                         review = state.overallReviews[trip.id],
                         albumPhotos = albumPhotos,
-                        photoBytes = state.reviewPhotoBytes,
                         editing = editingOverallReview,
                         onEdit = { editingOverallReview = !editingOverallReview },
                         onSave = { rating, content, representativePhotoId ->
@@ -1004,8 +1002,8 @@ private fun CompletedTripAlbumScreen(
                             items(albumPhotos, key = { it.second.id }) { (item, photo) ->
                                 Column(Modifier.width(164.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                     AlbumPhoto(
+                                        itemId = item.id,
                                         photoId = photo.id,
-                                        bytes = state.reviewPhotoBytes[photo.id],
                                         contentDescription = photo.originalName,
                                         modifier = Modifier.fillMaxWidth().height(112.dp),
                                     )
@@ -1044,7 +1042,6 @@ private fun CompletedTripAlbumScreen(
                             item = item,
                             zoneId = zoneId,
                             review = state.reviews[item.id],
-                            photoBytes = state.reviewPhotoBytes,
                             editing = editingItemId == item.id,
                             onEdit = { editingItemId = if (editingItemId == item.id) null else item.id },
                             onSaveReview = { rating, content, photos, removedPhotoIds ->
@@ -1067,7 +1064,6 @@ private fun CompletedTripAlbumScreen(
 private fun TripOverallReviewCard(
     review: TripOverallReview?,
     albumPhotos: List<Pair<ItineraryItem, ReviewPhoto>>,
-    photoBytes: Map<String, ByteArray>,
     editing: Boolean,
     onEdit: () -> Unit,
     onSave: (Int, String, String?) -> Unit,
@@ -1090,7 +1086,7 @@ private fun TripOverallReviewCard(
                 }
             }
             when {
-                editing -> TripOverallReviewEditor(review, albumPhotos, photoBytes, onSave, onEdit)
+                editing -> TripOverallReviewEditor(review, albumPhotos, onSave, onEdit)
                 review == null -> {
                     Text("별점과 이야기, 대표 사진을 선택할 수 있어요.", color = Muted)
                     Button(onClick = onEdit, modifier = Modifier.align(Alignment.End), shape = RoundedCornerShape(14.dp)) {
@@ -1104,8 +1100,8 @@ private fun TripOverallReviewCard(
                     if (review.content.isNotBlank()) Text(review.content, color = Ink, lineHeight = 21.sp)
                     review.representativePhoto?.let { photo ->
                         AlbumPhoto(
+                            itemId = photo.itemId,
                             photoId = photo.id,
-                            bytes = photoBytes[photo.id],
                             contentDescription = photo.originalName,
                             modifier = Modifier.fillMaxWidth().height(180.dp),
                         )
@@ -1121,7 +1117,6 @@ private fun TripOverallReviewCard(
 private fun TripOverallReviewEditor(
     review: TripOverallReview?,
     albumPhotos: List<Pair<ItineraryItem, ReviewPhoto>>,
-    photoBytes: Map<String, ByteArray>,
     onSave: (Int, String, String?) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -1160,8 +1155,8 @@ private fun TripOverallReviewEditor(
                 ) {
                     Column {
                         AlbumPhoto(
+                            itemId = item.id,
                             photoId = photo.id,
-                            bytes = photoBytes[photo.id],
                             contentDescription = photo.originalName,
                             modifier = Modifier.fillMaxWidth().height(82.dp),
                         )
@@ -1200,7 +1195,6 @@ private fun AlbumReviewCard(
     item: ItineraryItem,
     zoneId: ZoneId,
     review: Review?,
-    photoBytes: Map<String, ByteArray>,
     editing: Boolean,
     onEdit: () -> Unit,
     onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
@@ -1242,7 +1236,7 @@ private fun AlbumReviewCard(
 
             if (editing) {
                 HorizontalDivider(color = Border)
-                ReviewEditor(review, photoBytes, onSaveReview)
+                ReviewEditor(item.id, review, onSaveReview)
                 TextButton(onClick = onEdit, modifier = Modifier.align(Alignment.End).padding(end = 10.dp, bottom = 6.dp)) {
                     Text("작성 닫기", color = Muted)
                 }
@@ -1273,8 +1267,8 @@ private fun AlbumReviewCard(
                     ) {
                         items(review.photos, key = { it.id }) { photo ->
                             AlbumPhoto(
+                                itemId = item.id,
                                 photoId = photo.id,
-                                bytes = photoBytes[photo.id],
                                 contentDescription = photo.originalName,
                                 modifier = Modifier.size(92.dp),
                             )
@@ -1293,29 +1287,46 @@ private fun AlbumReviewCard(
 }
 
 @Composable
-private fun AlbumPhoto(photoId: String, bytes: ByteArray?, contentDescription: String, modifier: Modifier = Modifier) {
+private fun AlbumPhoto(
+    itemId: String,
+    photoId: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
     Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = Sky) {
-        val bitmap by produceState(photoBitmapCache.get(photoId), photoId, bytes) {
-            if (value == null && bytes != null) {
-                value = withContext(Dispatchers.Default) {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
-                        ?.also { photoBitmapCache.put(photoId, it) }
-                }
-            }
-        }
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("사진 불러오는 중", color = Muted, style = MaterialTheme.typography.labelSmall)
-            }
-        }
+        RemoteReviewPhoto(itemId, photoId, contentDescription, Modifier.fillMaxSize())
     }
+}
+
+@Composable
+private fun RemoteReviewPhoto(
+    itemId: String,
+    photoId: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val token = remember { TokenStore(context).accessToken }
+    val request = remember(itemId, photoId, token) {
+        val cacheKey = "review-photo:$photoId:${token?.hashCode() ?: 0}"
+        ImageRequest.Builder(context)
+            .data("${BuildConfig.API_BASE_URL}api/v1/items/$itemId/review/photos/$photoId/content")
+            .memoryCacheKey(cacheKey)
+            .diskCacheKey(cacheKey)
+            .headers(
+                Headers.Builder().apply {
+                    token?.let { add("Authorization", "Bearer $it") }
+                }.build(),
+            )
+            .crossfade(true)
+            .build()
+    }
+    AsyncImage(
+        model = request,
+        contentDescription = contentDescription,
+        contentScale = ContentScale.Crop,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -1593,7 +1604,6 @@ private fun ItineraryCard(
     onToggle: (ItineraryItem, Boolean) -> Unit,
     reviewEnabled: Boolean,
     review: Review?,
-    photoBytes: Map<String, ByteArray>,
     onEdit: () -> Unit,
     onSaveReview: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
@@ -1643,7 +1653,7 @@ private fun ItineraryCard(
             }
             if (reviewEnabled) {
                 HorizontalDivider(color = Border)
-                ReviewEditor(review, photoBytes, onSaveReview)
+                ReviewEditor(item.id, review, onSaveReview)
             }
         }
     }
@@ -2085,8 +2095,8 @@ private fun nextItineraryWindow(trip: Trip): Pair<String, String> {
 
 @Composable
 private fun ReviewEditor(
+    itemId: String,
     review: Review?,
-    photoBytes: Map<String, ByteArray>,
     onSave: (Int, String, List<Uri>, Set<String>) -> Unit,
 ) {
     var rating by remember(review) { mutableIntStateOf(review?.rating ?: 5) }
@@ -2125,9 +2135,9 @@ private fun ReviewEditor(
         Field(content, { content = it }, "이 계획에서 기억하고 싶은 점")
         visiblePhotos.forEach { photo ->
             ReviewPhotoRow(
+                itemId = itemId,
                 photoId = photo.id,
                 name = photo.originalName,
-                bytes = photoBytes[photo.id],
                 onRemove = { removedPhotoIds = removedPhotoIds + photo.id },
             )
         }
@@ -2151,25 +2161,15 @@ private fun ReviewEditor(
 }
 
 @Composable
-private fun ReviewPhotoRow(photoId: String, name: String, bytes: ByteArray?, onRemove: () -> Unit) {
-    val bitmap by produceState(photoBitmapCache.get(photoId), photoId, bytes) {
-        if (value == null && bytes != null) {
-            value = withContext(Dispatchers.Default) {
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
-                    ?.also { photoBitmapCache.put(photoId, it) }
-            }
-        }
-    }
+private fun ReviewPhotoRow(itemId: String, photoId: String, name: String, onRemove: () -> Unit) {
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, border = BorderStroke(1.dp, Border)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            bitmap?.let { decoded ->
-                Image(
-                    bitmap = decoded.asImageBitmap(),
-                    contentDescription = name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
-                )
-            }
+            RemoteReviewPhoto(
+                itemId = itemId,
+                photoId = photoId,
+                contentDescription = name,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+            )
             Text(name, modifier = Modifier.weight(1f), maxLines = 1, color = Ink)
             TextButton(onClick = onRemove) { Text("삭제", color = Coral) }
         }
@@ -2180,8 +2180,10 @@ private fun ReviewPhotoRow(photoId: String, name: String, bytes: ByteArray?, onR
 private fun SelectedPhotoRow(uri: Uri, onRemove: () -> Unit) {
     val context = LocalContext.current
     val bitmap by produceState<android.graphics.Bitmap?>(null, uri) {
-        value = context.contentResolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = 4 })
+        value = withContext(Dispatchers.IO) {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = 4 })
+            }
         }
     }
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, border = BorderStroke(1.dp, Border)) {
