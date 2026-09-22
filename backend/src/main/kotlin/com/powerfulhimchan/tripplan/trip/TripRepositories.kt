@@ -33,6 +33,7 @@ interface TripRepository : JpaRepository<Trip, UUID> {
 
 interface ItineraryItemRepository : JpaRepository<ItineraryItem, UUID> {
     fun findAllByTripIdOrderByScheduledAt(tripId: UUID): List<ItineraryItem>
+    fun findAllByTripIdInOrderByScheduledAt(tripIds: Collection<UUID>): List<ItineraryItem>
 
     @Query("""
         select i from ItineraryItem i
