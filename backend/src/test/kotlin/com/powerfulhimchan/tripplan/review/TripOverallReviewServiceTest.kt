@@ -49,10 +49,10 @@ class TripOverallReviewServiceTest @Autowired constructor(
         assertThat(saved.content).isEqualTo("다시 가고 싶은 여행")
         assertThat(saved.representativePhoto?.itemId).isEqualTo(item.id)
         assertThat(service.get("user-1", trip.id)?.representativePhoto?.originalName).isEqualTo("cover.jpg")
-        assertThat(service.getAll("user-1")).singleElement().satisfies { review ->
-            assertThat(review.tripId).isEqualTo(trip.id)
-            assertThat(review.representativePhoto?.itemId).isEqualTo(item.id)
-        }
+        val allReviews = service.getAll("user-1")
+        assertThat(allReviews).hasSize(1)
+        assertThat(allReviews.first().tripId).isEqualTo(trip.id)
+        assertThat(allReviews.first().representativePhoto?.itemId).isEqualTo(item.id)
     }
 
     @Test
