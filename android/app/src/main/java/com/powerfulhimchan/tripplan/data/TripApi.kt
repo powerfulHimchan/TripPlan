@@ -68,6 +68,9 @@ interface TripApi {
     @GET("api/v1/trips/{tripId}/review")
     suspend fun getTripOverallReview(@Path("tripId") tripId: String): Response<TripOverallReview>
 
+    @GET("api/v1/trips/overall-reviews")
+    suspend fun getTripOverallReviews(): List<TripOverallReview>
+
     @PUT("api/v1/trips/{tripId}/review")
     suspend fun saveTripOverallReview(
         @Path("tripId") tripId: String,
