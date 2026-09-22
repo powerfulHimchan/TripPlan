@@ -136,10 +136,21 @@ class ReviewCleanupService(
     private val reviews: TripReviewRepository,
     private val photos: ReviewPhotoRepository,
     private val photoDeletions: ReviewPhotoDeletionService,
+    private val items: ItineraryItemRepository,
 ) {
     fun prepareItemDeletion(itemId: UUID) {
         val review = reviews.findByItemId(itemId) ?: return
         photoDeletions.enqueue(photos.findAllByReviewIdOrderByCreatedAt(review.id).map { it.storedName })
+    }
+
+    fun prepareTripDeletion(tripId: UUID) {
+        val itemIds = items.findAllByTripIdOrderByScheduledAt(tripId).map { it.id }
+        if (itemIds.isEmpty()) return
+        val reviewIds = reviews.findAllByItemIdIn(itemIds).map { it.id }
+        if (reviewIds.isEmpty()) return
+        photoDeletions.enqueue(
+            photos.findAllByReviewIdInOrderByCreatedAt(reviewIds).map { it.storedName },
+        )
     }
 }
 

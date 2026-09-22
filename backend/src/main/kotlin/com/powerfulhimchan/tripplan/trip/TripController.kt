@@ -19,10 +19,30 @@ class TripController(
         service.create(jwt.subject, request)
 
     @GetMapping("/trips")
-    fun list(@AuthenticationPrincipal jwt: Jwt) = service.list(jwt.subject)
+    fun list(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "false") archived: Boolean) =
+        service.list(jwt.subject, archived)
 
     @GetMapping("/trips/{tripId}")
     fun get(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) = service.get(jwt.subject, tripId)
+
+    @PatchMapping("/trips/{tripId}")
+    fun update(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID,
+               @Valid @RequestBody request: UpdateTripRequest) = service.update(jwt.subject, tripId, request)
+
+    @PostMapping("/trips/{tripId}/archive")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun archive(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) =
+        service.archive(jwt.subject, tripId)
+
+    @DeleteMapping("/trips/{tripId}/archive")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unarchive(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) =
+        service.unarchive(jwt.subject, tripId)
+
+    @DeleteMapping("/trips/{tripId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) =
+        service.delete(jwt.subject, tripId)
 
     @GetMapping("/trips/{tripId}/details")
     fun details(@AuthenticationPrincipal jwt: Jwt, @PathVariable tripId: UUID) =

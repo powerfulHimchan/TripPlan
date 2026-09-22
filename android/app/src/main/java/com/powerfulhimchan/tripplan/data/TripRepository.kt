@@ -36,9 +36,13 @@ class TripRepository(private val tokenStore: TokenStore) {
     suspend fun login(email: String, password: String) = api.login(EmailPasswordRequest(email, password)).also(tokenStore::save)
     fun logout() = tokenStore.clear()
 
-    suspend fun trips() = api.getTrips()
+    suspend fun trips(archived: Boolean = false) = api.getTrips(archived)
     suspend fun tripDetail(tripId: String) = api.getTripDetail(tripId)
     suspend fun createTrip(request: CreateTripRequest) = api.createTrip(request)
+    suspend fun updateTrip(tripId: String, request: CreateTripRequest) = api.updateTrip(tripId, request)
+    suspend fun archiveTrip(tripId: String) = api.archiveTrip(tripId)
+    suspend fun unarchiveTrip(tripId: String) = api.unarchiveTrip(tripId)
+    suspend fun deleteTrip(tripId: String) = api.deleteTrip(tripId)
     suspend fun addItem(tripId: String, request: CreateItemRequest) = api.addItem(tripId, request)
     suspend fun updateItem(itemId: String, request: CreateItemRequest) = api.updateItem(itemId, request)
     suspend fun setNotification(item: ItineraryItem, enabled: Boolean) =

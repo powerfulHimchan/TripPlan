@@ -15,6 +15,14 @@ data class CreateTripRequest(
     @field:NotBlank val timezone: String = "Asia/Seoul",
 )
 
+data class UpdateTripRequest(
+    @field:NotBlank @field:Size(max = 120) val title: String,
+    @field:NotBlank @field:Size(max = 120) val destination: String,
+    val startDate: LocalDate,
+    val endDate: LocalDate,
+    @field:NotBlank val timezone: String = "Asia/Seoul",
+)
+
 data class CreateItineraryItemRequest(
     @field:NotBlank @field:Size(max = 120) val title: String,
     @field:Size(max = 200) val place: String? = null,
@@ -65,6 +73,8 @@ data class TripResponse(
     val endDate: LocalDate,
     val timezone: String,
     val items: List<ItineraryItemResponse>,
+    val owner: Boolean,
+    val archived: Boolean,
 )
 
 data class TripDetailResponse(
