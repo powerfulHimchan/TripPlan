@@ -15,6 +15,7 @@ class ReviewService(
     private val reviews: TripReviewRepository,
     private val photos: ReviewPhotoRepository,
     private val photoStorage: ReviewPhotoStorage,
+    private val photoDeletions: ReviewPhotoDeletionService,
     private val trips: TripRepository,
     private val items: ItineraryItemRepository,
 ) {
@@ -77,7 +78,7 @@ class ReviewService(
                     sizeBytes = file.size,
                 )
             }
-            photos.saveAll(stored)
+            photos.saveAllAndFlush(stored)
         } catch (e: Exception) {
             stored.forEach { photoStorage.delete(it.storedName) }
             throw e
@@ -98,7 +99,7 @@ class ReviewService(
         val review = accessibleReview(userId, itemId)
         val photo = photos.findByIdAndReviewId(photoId, review.id)
             ?: throw EntityNotFoundException("후기 사진을 찾을 수 없습니다.")
-        photoStorage.delete(photo.storedName)
+        photoDeletions.enqueue(listOf(photo.storedName))
         photos.delete(photo)
         return review.toResponse()
     }
@@ -124,6 +125,18 @@ class ReviewService(
         const val MAX_PHOTO_COUNT = 5L
         const val MAX_PHOTO_SIZE = 5L * 1024 * 1024
         val ALLOWED_CONTENT_TYPES = setOf("image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif")
+    }
+}
+
+@Service
+class ReviewCleanupService(
+    private val reviews: TripReviewRepository,
+    private val photos: ReviewPhotoRepository,
+    private val photoDeletions: ReviewPhotoDeletionService,
+) {
+    fun prepareItemDeletion(itemId: UUID) {
+        val review = reviews.findByItemId(itemId) ?: return
+        photoDeletions.enqueue(photos.findAllByReviewIdOrderByCreatedAt(review.id).map { it.storedName })
     }
 }
 

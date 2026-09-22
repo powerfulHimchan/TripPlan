@@ -46,12 +46,41 @@ class TripOverallReviewService(
         return overallReviews.findByTripId(tripId)?.toResponse()
     }
 
-    private fun TripOverallReview.toResponse() = TripOverallReviewResponse(
+    @Transactional(readOnly = true)
+    fun getAll(userId: String): List<TripOverallReviewResponse> {
+        val tripIds = trips.findAllAccessible(userId).map { it.id }
+        if (tripIds.isEmpty()) return emptyList()
+        val reviews = overallReviews.findAllByTripIdIn(tripIds)
+        if (reviews.isEmpty()) return emptyList()
+
+        val photoIds = reviews.mapNotNull { it.representativePhotoId }
+        val photosById = photos.findAllById(photoIds).associateBy { it.id }
+        val itineraryReviewsById = itineraryReviews.findAllById(photosById.values.map { it.reviewId })
+            .associateBy { it.id }
+        val itemsById = items.findAllById(itineraryReviewsById.values.map { it.itemId })
+            .associateBy { it.id }
+
+        return reviews.map { review ->
+            val representative = review.representativePhotoId?.let { photoId ->
+                val photo = photosById[photoId] ?: return@let null
+                val itineraryReview = itineraryReviewsById[photo.reviewId] ?: return@let null
+                val item = itemsById[itineraryReview.itemId]
+                    ?.takeIf { it.tripId == review.tripId }
+                    ?: return@let null
+                RepresentativePhotoResponse(photo.id, item.id, photo.originalName, photo.contentType, photo.sizeBytes)
+            }
+            review.toResponse(representative)
+        }
+    }
+
+    private fun TripOverallReview.toResponse(
+        representative: RepresentativePhotoResponse? = representativePhotoId?.let { representativePhoto(tripId, it) },
+    ) = TripOverallReviewResponse(
         id = id,
         tripId = tripId,
         rating = rating,
         content = content,
-        representativePhoto = representativePhotoId?.let { representativePhoto(tripId, it) },
+        representativePhoto = representative,
         updatedAt = updatedAt,
     )
 
@@ -65,4 +94,3 @@ class TripOverallReviewService(
         return RepresentativePhotoResponse(photo.id, item.id, photo.originalName, photo.contentType, photo.sizeBytes)
     }
 }
-
