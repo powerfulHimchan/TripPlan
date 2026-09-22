@@ -31,6 +31,11 @@ interface TripRepository : JpaRepository<Trip, UUID> {
     fun findAccessible(@Param("tripId") tripId: UUID, @Param("userId") userId: String): Trip?
 }
 
+interface TripArchiveRepository : JpaRepository<TripArchive, UUID> {
+    fun findAllByUserIdAndTripIdIn(userId: String, tripIds: Collection<UUID>): List<TripArchive>
+    fun findByTripIdAndUserId(tripId: UUID, userId: String): TripArchive?
+}
+
 interface ItineraryItemRepository : JpaRepository<ItineraryItem, UUID> {
     fun findAllByTripIdOrderByScheduledAt(tripId: UUID): List<ItineraryItem>
     fun findAllByTripIdInOrderByScheduledAt(tripIds: Collection<UUID>): List<ItineraryItem>

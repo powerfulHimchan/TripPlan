@@ -26,9 +26,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape as ComposeRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.runtime.*
@@ -86,12 +88,12 @@ private val Ink = Color(0xFF20343D)
 private val Muted = Color(0xFF6A7F88)
 private val Border = Color(0xFFDCE8EC)
 private val WonNumberFormat = NumberFormat.getNumberInstance(Locale.KOREA)
-private val AngularShape = CutCornerShape(5.dp)
-private val AngularSmallShape = CutCornerShape(3.dp)
+private val RectangularShape = ComposeRoundedCornerShape(5.dp)
+private val RectangularSmallShape = ComposeRoundedCornerShape(3.dp)
 
-// 기존 컴포넌트의 크기별 shape 호출을 각진 디자인 토큰으로 일괄 매핑한다.
-private fun RoundedCornerShape(size: Dp) = if (size <= 10.dp) AngularSmallShape else AngularShape
-private fun RoundedCornerShape(percent: Int) = if (percent <= 0) AngularSmallShape else AngularShape
+// 기존 크기 호출을 낮은 반경의 사각형 토큰으로 제한해 모든 컨트롤의 모서리를 일관되게 유지한다.
+private fun RoundedCornerShape(size: Dp) = if (size <= 10.dp) RectangularSmallShape else RectangularShape
+private fun RoundedCornerShape(percent: Int) = if (percent <= 0) RectangularSmallShape else RectangularShape
 
 private data class ItineraryCategoryStyle(
     val value: String,
@@ -133,19 +135,20 @@ fun TripApp(viewModel: TripViewModel) {
             outline = Border,
         ),
         shapes = Shapes(
-            small = AngularSmallShape,
-            medium = AngularShape,
-            large = CutCornerShape(7.dp),
+            small = RectangularSmallShape,
+            medium = RectangularShape,
+            large = RectangularShape,
         ),
     ) {
         Surface(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
             when {
                 state.versionChecking -> VersionCheckScreen()
                 requiredUpdate != null -> ForceUpdateScreen(requiredUpdate)
                 !state.authenticated -> AuthScreen(state.loading, viewModel::login, viewModel::register)
                 state.selected == null -> TripListScreen(
                     state, viewModel::select, viewModel::createTrip, viewModel::logout,
-                    viewModel::acceptInvitation, viewModel::declineInvitation,
+                    viewModel::acceptInvitation, viewModel::declineInvitation, { viewModel.refresh() },
                 )
                 else -> TripDetailScreen(
                     state, { viewModel.select(null) }, viewModel::addItem,
@@ -153,10 +156,27 @@ fun TripApp(viewModel: TripViewModel) {
                     viewModel::saveReview, viewModel::saveTripOverallReview,
                     viewModel::loadGoogleCalendars, viewModel::exportSelectedTripToCalendar,
                     viewModel::clearCalendarExportMessage, viewModel::invite,
+                    viewModel::updateSelectedTrip, viewModel::archiveSelectedTrip,
+                    viewModel::restoreSelectedTrip, viewModel::deleteSelectedTrip,
+                    viewModel::refreshSelectedTrip,
                 )
             }
-            if (state.loading) LoadingOverlay()
-            state.error?.let { ErrorSnackbar(it) }
+            if (state.busyOperations.isNotEmpty() && !state.refreshing && !state.loading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    color = Coral,
+                    trackColor = Sky,
+                )
+            }
+            state.error?.let {
+                ErrorSnackbar(
+                    message = it,
+                    canRetry = state.errorCanRetry,
+                    onRetry = viewModel::retryLastRequest,
+                    onDismiss = viewModel::dismissError,
+                )
+            }
+            }
         }
     }
 }
@@ -384,13 +404,18 @@ private fun TripListScreen(
     onLogout: () -> Unit,
     onAccept: (String) -> Unit,
     onDecline: (String) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var showInvitations by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val activeTrips = state.trips.filter { tripProgress(it) != TripProgress.COMPLETED }
     val completedTrips = state.trips.filter { tripProgress(it) == TripProgress.COMPLETED }
-    val visibleTrips = if (selectedTab == 0) activeTrips else completedTrips
+    val visibleTrips = when (selectedTab) {
+        0 -> activeTrips
+        1 -> completedTrips
+        else -> state.archivedTrips
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -424,9 +449,14 @@ private fun TripListScreen(
                 ) { Text("＋ 새 여행", fontWeight = FontWeight.Bold) }
             },
         ) { padding ->
-            if (state.trips.isEmpty() && !state.loading) {
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
+            if (state.trips.isEmpty() && state.archivedTrips.isEmpty() && !state.refreshing) {
                 LazyColumn(
-                    Modifier.fillMaxSize().padding(padding),
+                    Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -450,13 +480,13 @@ private fun TripListScreen(
                 }
             } else {
                 LazyColumn(
-                    Modifier.fillMaxSize().padding(padding),
+                    Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     item {
                         Text("어디로 떠나볼까요?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Ink)
-                        Text("계획하고, 함께 담은 여행 ${state.trips.size}개", color = Muted)
+                        Text("계획하고, 함께 담은 여행 ${state.trips.size + state.archivedTrips.size}개", color = Muted)
                     }
                     item {
                         TabRow(
@@ -476,6 +506,11 @@ private fun TripListScreen(
                                 onClick = { selectedTab = 1 },
                                 text = { Text("지난 여행 ${completedTrips.size}", fontWeight = FontWeight.Bold) },
                             )
+                            Tab(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                text = { Text("보관 ${state.archivedTrips.size}", fontWeight = FontWeight.Bold) },
+                            )
                         }
                     }
                     if (visibleTrips.isEmpty()) {
@@ -491,12 +526,20 @@ private fun TripListScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Text(
-                                        if (selectedTab == 0) "예정되거나 진행 중인 여행이 없어요" else "아직 종료된 여행이 없어요",
+                                        when (selectedTab) {
+                                            0 -> "예정되거나 진행 중인 여행이 없어요"
+                                            1 -> "아직 종료된 여행이 없어요"
+                                            else -> "보관한 여행이 없어요"
+                                        },
                                         fontWeight = FontWeight.Bold,
                                         color = Ink,
                                     )
                                     Text(
-                                        if (selectedTab == 0) "새로운 여행을 계획해보세요." else "여행이 끝나면 이곳에서 다시 볼 수 있어요.",
+                                        when (selectedTab) {
+                                            0 -> "새로운 여행을 계획해보세요."
+                                            1 -> "여행이 끝나면 이곳에서 다시 볼 수 있어요."
+                                            else -> "상세 화면의 설정에서 여행을 보관할 수 있어요."
+                                        },
                                         color = Muted,
                                     )
                                 }
@@ -549,6 +592,7 @@ private fun TripListScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -692,6 +736,11 @@ private fun TripDetailScreen(
     onExportToCalendar: (Long) -> Unit,
     onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
+    onUpdateTrip: (CreateTripRequest) -> Unit,
+    onArchiveTrip: () -> Unit,
+    onRestoreTrip: () -> Unit,
+    onDeleteTrip: () -> Unit,
+    onRefresh: () -> Unit,
 ) {
     val trip = state.selected ?: return
     if (tripProgress(trip) == TripProgress.COMPLETED) {
@@ -704,6 +753,11 @@ private fun TripDetailScreen(
             onExportToCalendar = onExportToCalendar,
             onClearCalendarMessage = onClearCalendarMessage,
             onInvite = onInvite,
+            onUpdateTrip = onUpdateTrip,
+            onArchiveTrip = onArchiveTrip,
+            onRestoreTrip = onRestoreTrip,
+            onDeleteTrip = onDeleteTrip,
+            onRefresh = onRefresh,
         )
         return
     }
@@ -725,6 +779,7 @@ private fun TripDetailScreen(
     var showItem by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<ItineraryItem?>(null) }
     var showSharing by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var showTimeline by remember(trip.id) { mutableStateOf(false) }
     Box(
         Modifier
@@ -741,20 +796,28 @@ private fun TripDetailScreen(
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
                         TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                        TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
                     },
                 )
             },
             floatingActionButton = {
+                if (!trip.archived) {
                 ExtendedFloatingActionButton(
                     onClick = { showItem = true },
                     containerColor = Coral,
                     contentColor = Color.White,
                     shape = RoundedCornerShape(18.dp),
                 ) { Text("＋ 일정 추가", fontWeight = FontWeight.Bold) }
+                }
             },
         ) { padding ->
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
             LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(if (showTimeline) 6.dp else 14.dp),
             ) {
@@ -863,6 +926,7 @@ private fun TripDetailScreen(
                     }
                 }
             }
+            }
         }
     }
     if (showItem) AddItemDialog(trip, { showItem = false }) { onAddItem(it); showItem = false }
@@ -876,6 +940,15 @@ private fun TripDetailScreen(
         onInvite(it)
         showSharing = false
     }
+    if (showSettings) TripSettingsDialog(
+        trip = trip,
+        busy = state.busyOperations.any { it.contains("trip-${trip.id}") },
+        onDismiss = { showSettings = false },
+        onUpdate = { onUpdateTrip(it); showSettings = false },
+        onArchive = onArchiveTrip,
+        onRestore = onRestoreTrip,
+        onDelete = onDeleteTrip,
+    )
 }
 
 @Composable
@@ -888,6 +961,11 @@ private fun CompletedTripAlbumScreen(
     onExportToCalendar: (Long) -> Unit,
     onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
+    onUpdateTrip: (CreateTripRequest) -> Unit,
+    onArchiveTrip: () -> Unit,
+    onRestoreTrip: () -> Unit,
+    onDeleteTrip: () -> Unit,
+    onRefresh: () -> Unit,
 ) {
     val trip = state.selected ?: return
     BackHandler(onBack = onBack)
@@ -907,6 +985,7 @@ private fun CompletedTripAlbumScreen(
     var editingItemId by remember(trip.id) { mutableStateOf<String?>(null) }
     var editingOverallReview by remember(trip.id) { mutableStateOf(false) }
     var showSharing by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     Box(
         Modifier
@@ -923,12 +1002,18 @@ private fun CompletedTripAlbumScreen(
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
                         TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
+                        TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
                     },
                 )
             },
         ) { padding ->
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
             LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -1052,12 +1137,22 @@ private fun CompletedTripAlbumScreen(
                     }
                 }
             }
+            }
         }
     }
     if (showSharing) SharingDialog(state.members, canInvite, { showSharing = false }) {
         onInvite(it)
         showSharing = false
     }
+    if (showSettings) TripSettingsDialog(
+        trip = trip,
+        busy = state.busyOperations.any { it.contains("trip-${trip.id}") },
+        onDismiss = { showSettings = false },
+        onUpdate = { onUpdateTrip(it); showSettings = false },
+        onArchive = onArchiveTrip,
+        onRestore = onRestoreTrip,
+        onDelete = onDeleteTrip,
+    )
 }
 
 @Composable
@@ -1356,7 +1451,11 @@ private fun CalendarExportAction(
             permissionLauncher.launch(permissions)
         }
     }
-    TextButton(onClick = openPicker) { Text("내보내기", fontWeight = FontWeight.SemiBold) }
+    val calendarBusy = state.busyOperations.any { it.startsWith("calendar-") }
+    TextButton(onClick = openPicker, enabled = !calendarBusy) {
+        if (calendarBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        else Text("내보내기", fontWeight = FontWeight.SemiBold)
+    }
     if (showCalendars) {
         AlertDialog(
             onDismissRequest = { showCalendars = false },
@@ -1540,7 +1639,7 @@ private fun TimelineItemCard(
     }
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Column(Modifier.width(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(16.dp).clip(RoundedCornerShape(50)).background(accentColor))
+            Box(Modifier.size(16.dp).clip(CircleShape).background(accentColor))
             if (!isLast) Box(Modifier.width(2.dp).weight(1f).background(Border))
         }
         Card(
@@ -1709,6 +1808,92 @@ private fun CreateTripDialog(onDismiss: () -> Unit, onSave: (CreateTripRequest) 
             if (end.isBefore(selected)) end = selected
         }
         CalendarDateField("종료일", end) { selected -> end = maxOf(selected, start) }
+    }
+}
+
+@Composable
+private fun TripSettingsDialog(
+    trip: Trip,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onUpdate: (CreateTripRequest) -> Unit,
+    onArchive: () -> Unit,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var title by remember(trip.id) { mutableStateOf(trip.title) }
+    var destination by remember(trip.id) { mutableStateOf(trip.destination) }
+    var start by remember(trip.id) { mutableStateOf(LocalDate.parse(trip.startDate)) }
+    var end by remember(trip.id) { mutableStateOf(LocalDate.parse(trip.endDate)) }
+    var confirmDelete by remember(trip.id) { mutableStateOf(false) }
+    val changed = title != trip.title || destination != trip.destination ||
+        start.toString() != trip.startDate || end.toString() != trip.endDate
+    val canSave = trip.owner && changed && title.isNotBlank() && destination.isNotBlank() && !end.isBefore(start) && !busy
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        title = { Text("여행 설정", color = Teal, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (trip.owner) {
+                    Field(title, { title = it }, "여행 이름")
+                    Field(destination, { destination = it }, "목적지")
+                    CalendarDateField("시작일", start) { selected ->
+                        start = selected
+                        if (end.isBefore(selected)) end = selected
+                    }
+                    CalendarDateField("종료일", end) { end = maxOf(it, start) }
+                    Button(
+                        onClick = {
+                            onUpdate(CreateTripRequest(title, destination, start.toString(), end.toString(), trip.timezone))
+                        },
+                        enabled = canSave,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("여행 정보 저장")
+                    }
+                    HorizontalDivider(color = Border)
+                } else {
+                    Text("여행 정보는 여행을 만든 사람만 수정할 수 있어요.", color = Muted)
+                }
+
+                OutlinedButton(
+                    onClick = if (trip.archived) onRestore else onArchive,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (trip.archived) "여행 목록으로 되돌리기" else "여행 보관하기") }
+
+                if (trip.owner) {
+                    TextButton(
+                        onClick = { confirmDelete = true },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("여행 영구 삭제", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            shape = RoundedCornerShape(18.dp),
+            title = { Text("여행을 삭제할까요?", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("일정, 후기, 사진과 공유 정보가 모두 삭제되며 되돌릴 수 없습니다.", color = Muted) },
+            confirmButton = {
+                Button(
+                    onClick = { confirmDelete = false; onDelete() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("삭제") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("취소") } },
+        )
     }
 }
 
@@ -2243,21 +2428,24 @@ private fun Field(value: String, onChange: (String) -> Unit, label: String) {
 }
 
 @Composable
-private fun LoadingOverlay() {
-    Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
-        Surface(shape = RoundedCornerShape(22.dp), color = Color.White, shadowElevation = 8.dp) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProgressIndicator(color = Teal)
-                Text("여행을 담는 중이에요", color = Muted, style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ErrorSnackbar(message: String) {
+private fun ErrorSnackbar(
+    message: String,
+    canRetry: Boolean,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
-        Snackbar(containerColor = Ink, contentColor = Color.White, shape = RoundedCornerShape(16.dp)) { Text(message) }
+        Snackbar(
+            containerColor = Ink,
+            contentColor = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            action = if (canRetry) {
+                { TextButton(onClick = onRetry) { Text("다시 시도", color = Sky, fontWeight = FontWeight.Bold) } }
+            } else null,
+            dismissAction = {
+                TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+            },
+        ) { Text(message) }
     }
 }
 

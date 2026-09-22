@@ -12,6 +12,7 @@ import java.util.UUID
 class TripService(
     private val trips: TripRepository,
     private val items: ItineraryItemRepository,
+    private val archives: TripArchiveRepository,
     private val reviewCleanup: ReviewCleanupService,
 ) {
     @Transactional
@@ -21,22 +22,69 @@ class TripService(
         return trips.save(
             Trip(userId = userId, title = request.title.trim(), destination = request.destination.trim(),
                 startDate = request.startDate, endDate = request.endDate, timezone = request.timezone)
-        ).toResponse(emptyList())
+        ).toResponse(emptyList(), userId, archived = false)
     }
 
     @Transactional(readOnly = true)
-    fun list(userId: String): List<TripResponse> {
+    fun list(userId: String, archived: Boolean = false): List<TripResponse> {
         val accessibleTrips = trips.findAllAccessible(userId)
         if (accessibleTrips.isEmpty()) return emptyList()
-        val itemsByTripId = items.findAllByTripIdInOrderByScheduledAt(accessibleTrips.map(Trip::id))
+        val archivedIds = archives.findAllByUserIdAndTripIdIn(userId, accessibleTrips.map(Trip::id))
+            .mapTo(mutableSetOf(), TripArchive::tripId)
+        val visibleTrips = accessibleTrips.filter { (it.id in archivedIds) == archived }
+        if (visibleTrips.isEmpty()) return emptyList()
+        val itemsByTripId = items.findAllByTripIdInOrderByScheduledAt(visibleTrips.map(Trip::id))
             .groupBy(ItineraryItem::tripId)
-        return accessibleTrips.map { trip -> trip.toResponse(itemsByTripId[trip.id].orEmpty()) }
+        return visibleTrips.map { trip -> trip.toResponse(itemsByTripId[trip.id].orEmpty(), userId, archived) }
     }
 
     @Transactional(readOnly = true)
     fun get(userId: String, tripId: UUID): TripResponse {
         val trip = accessibleTrip(userId, tripId)
-        return trip.toResponse(items.findAllByTripIdOrderByScheduledAt(tripId))
+        val archived = archives.findByTripIdAndUserId(tripId, userId) != null
+        return trip.toResponse(items.findAllByTripIdOrderByScheduledAt(tripId), userId, archived)
+    }
+
+    @Transactional
+    fun update(userId: String, tripId: UUID, request: UpdateTripRequest): TripResponse {
+        val trip = ownedTrip(userId, tripId)
+        validateTripRequest(request.startDate, request.endDate, request.timezone)
+        val tripItems = items.findAllByTripIdOrderByScheduledAt(tripId)
+        val newZoneId = ZoneId.of(request.timezone)
+        require(tripItems.none { item ->
+            val itemStart = item.scheduledAt.atZone(newZoneId).toLocalDate()
+            val itemEnd = item.endsAt.atZone(newZoneId).toLocalDate()
+            itemStart.isBefore(request.startDate) || itemStart.isAfter(request.endDate) ||
+                itemEnd.isBefore(request.startDate) || itemEnd.isAfter(request.endDate)
+        }) { "변경한 여행 기간 밖에 포함되는 일정이 있습니다. 일정을 먼저 수정해주세요." }
+        trip.title = request.title.trim()
+        trip.destination = request.destination.trim()
+        trip.startDate = request.startDate
+        trip.endDate = request.endDate
+        trip.timezone = request.timezone
+        trip.updatedAt = java.time.Instant.now()
+        return trip.toResponse(tripItems, userId, archives.findByTripIdAndUserId(tripId, userId) != null)
+    }
+
+    @Transactional
+    fun archive(userId: String, tripId: UUID) {
+        accessibleTrip(userId, tripId)
+        if (archives.findByTripIdAndUserId(tripId, userId) == null) {
+            archives.save(TripArchive(tripId = tripId, userId = userId))
+        }
+    }
+
+    @Transactional
+    fun unarchive(userId: String, tripId: UUID) {
+        accessibleTrip(userId, tripId)
+        archives.findByTripIdAndUserId(tripId, userId)?.let(archives::delete)
+    }
+
+    @Transactional
+    fun delete(userId: String, tripId: UUID) {
+        val trip = ownedTrip(userId, tripId)
+        reviewCleanup.prepareTripDeletion(tripId)
+        trips.delete(trip)
     }
 
     @Transactional
@@ -108,6 +156,14 @@ class TripService(
     private fun accessibleTrip(userId: String, tripId: UUID): Trip =
         trips.findAccessible(tripId, userId) ?: throw EntityNotFoundException("여행을 찾을 수 없습니다.")
 
+    private fun ownedTrip(userId: String, tripId: UUID): Trip =
+        trips.findByIdAndUserId(tripId, userId) ?: throw EntityNotFoundException("여행을 찾을 수 없습니다.")
+
+    private fun validateTripRequest(startDate: LocalDate, endDate: LocalDate, timezone: String) {
+        require(!endDate.isBefore(startDate)) { "종료일은 시작일보다 빠를 수 없습니다." }
+        runCatching { ZoneId.of(timezone) }.getOrElse { throw IllegalArgumentException("올바르지 않은 시간대입니다.") }
+    }
+
     private fun validateItemWindow(trip: Trip, scheduledAt: java.time.Instant, endsAt: java.time.Instant) {
         require(endsAt.isAfter(scheduledAt)) { "일정 종료 시각은 시작 시각보다 늦어야 합니다." }
         val zoneId = ZoneId.of(trip.timezone)
@@ -119,8 +175,10 @@ class TripService(
         ) { "일정 시작과 종료 시각은 여행 기간 안이어야 합니다." }
     }
 
-    private fun Trip.toResponse(items: List<ItineraryItem>) = TripResponse(
-        id, title, destination, startDate, endDate, timezone, items.map { it.toResponse() }
+    private fun Trip.toResponse(items: List<ItineraryItem>, requesterId: String, archived: Boolean) = TripResponse(
+        id, title, destination, startDate, endDate, timezone, items.map { it.toResponse() },
+        owner = userId == requesterId,
+        archived = archived,
     )
 
     private fun ItineraryItem.toResponse() = ItineraryItemResponse(

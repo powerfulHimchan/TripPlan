@@ -27,6 +27,7 @@ data class TripUiState(
     val authenticated: Boolean = false,
     val email: String? = null,
     val trips: List<Trip> = emptyList(),
+    val archivedTrips: List<Trip> = emptyList(),
     val selected: Trip? = null,
     val reviews: Map<String, Review> = emptyMap(),
     val overallReviews: Map<String, TripOverallReview> = emptyMap(),
@@ -36,11 +37,15 @@ data class TripUiState(
     val members: List<TripMember> = emptyList(),
     val detailLoading: Boolean = false,
     val loading: Boolean = false,
+    val refreshing: Boolean = false,
+    val busyOperations: Set<String> = emptySet(),
     val error: String? = null,
+    val errorCanRetry: Boolean = false,
 )
 
 private data class HomeData(
     val trips: List<Trip>,
+    val archivedTrips: List<Trip>,
     val overallReviews: Map<String, TripOverallReview>,
     val invitations: List<Invitation>,
 )
@@ -58,6 +63,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     val state = _state.asStateFlow()
     private var deviceToken: String? = null
     private val detailCache = mutableMapOf<String, TripDetail>()
+    private var retryAction: (() -> Unit)? = null
 
     init {
         checkAppVersion()
@@ -80,20 +86,32 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 versionChecking = false,
                 requiredUpdate = policy?.takeIf { it.updateRequired },
             )
-            if (policy?.updateRequired != true && repository.isLoggedIn) refresh()
+            if (policy?.updateRequired != true && repository.isLoggedIn) refresh(manual = false)
         }
     }
 
-    fun refresh() = launch {
-        val home = loadHomeData()
-        _state.value.copy(
-            trips = home.trips,
-            overallReviews = home.overallReviews,
-            invitations = home.invitations,
-            authenticated = true,
-            email = repository.email,
-            error = null,
-        )
+    fun refresh(manual: Boolean = true) {
+        launchOperation(
+            key = "home-refresh",
+            retry = { refresh(manual = true) },
+            refreshing = manual,
+        ) {
+            val home = loadHomeData()
+            _state.value.copy(
+                trips = home.trips,
+                archivedTrips = home.archivedTrips,
+                overallReviews = home.overallReviews,
+                invitations = home.invitations,
+                authenticated = true,
+                email = repository.email,
+            )
+        }
+    }
+
+    fun refreshSelectedTrip() {
+        val trip = _state.value.selected ?: return
+        detailCache.remove(trip.id)
+        loadTripDetail(trip, refreshing = true)
     }
 
     fun select(trip: Trip?) {
@@ -123,72 +141,95 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (cached != null) return
 
-        viewModelScope.launch {
-            runCatching { repository.tripDetail(trip.id) }
-                .onSuccess { detail ->
-                    detailCache[trip.id] = detail
-                    _state.update { current ->
-                        if (current.selected?.id != trip.id) current
-                        else {
-                            val overallReviews = detail.overallReview
-                                ?.let { current.overallReviews + (trip.id to it) }
-                                ?: (current.overallReviews - trip.id)
-                            current.copy(
-                                selected = detail.trip,
-                                trips = current.trips.map { if (it.id == trip.id) detail.trip else it },
-                                reviews = detail.reviews.associateBy(Review::itemId),
-                                overallReviews = overallReviews,
-                                members = detail.members,
-                                detailLoading = false,
-                                error = null,
-                            )
-                        }
-                    }
-                }
-                .onFailure { failure ->
-                    _state.update { current ->
-                        if (current.selected?.id != trip.id) current
-                        else current.copy(
-                            detailLoading = false,
-                            error = failure.message ?: "여행 상세 정보를 불러오지 못했습니다.",
-                        )
-                    }
-                }
+        loadTripDetail(trip)
+    }
+
+    fun createTrip(request: CreateTripRequest) = launchOperation("create-trip") {
+        val created = repository.createTrip(request)
+        _state.value.copy(trips = (_state.value.trips + created).sortedBy(Trip::startDate))
+    }
+
+    fun updateSelectedTrip(request: CreateTripRequest) {
+        val trip = _state.value.selected ?: return
+        launchOperation("update-trip-${trip.id}", retry = { updateSelectedTrip(request) }) {
+            val updated = repository.updateTrip(trip.id, request)
+            replaceTrip(updated)
         }
     }
 
-    fun createTrip(request: CreateTripRequest) = launch {
-        repository.createTrip(request)
-        _state.value.copy(trips = repository.trips())
+    fun archiveSelectedTrip() {
+        val trip = _state.value.selected ?: return
+        launchOperation("archive-trip-${trip.id}", retry = ::archiveSelectedTrip) {
+            repository.archiveTrip(trip.id)
+            detailCache.remove(trip.id)
+            _state.value.copy(
+                trips = _state.value.trips.filterNot { it.id == trip.id },
+                archivedTrips = (_state.value.archivedTrips + trip.copy(archived = true))
+                    .distinctBy(Trip::id)
+                    .sortedByDescending(Trip::startDate),
+                selected = null,
+                reviews = emptyMap(),
+                members = emptyList(),
+            )
+        }
+    }
+
+    fun restoreSelectedTrip() {
+        val trip = _state.value.selected ?: return
+        launchOperation("restore-trip-${trip.id}", retry = ::restoreSelectedTrip) {
+            repository.unarchiveTrip(trip.id)
+            detailCache.remove(trip.id)
+            _state.value.copy(
+                archivedTrips = _state.value.archivedTrips.filterNot { it.id == trip.id },
+                trips = (_state.value.trips + trip.copy(archived = false))
+                    .distinctBy(Trip::id)
+                    .sortedBy(Trip::startDate),
+                selected = null,
+                reviews = emptyMap(),
+                members = emptyList(),
+            )
+        }
+    }
+
+    fun deleteSelectedTrip() {
+        val trip = _state.value.selected ?: return
+        launchOperation("delete-trip-${trip.id}") {
+            repository.deleteTrip(trip.id)
+            detailCache.remove(trip.id)
+            _state.value.copy(
+                trips = _state.value.trips.filterNot { it.id == trip.id },
+                archivedTrips = _state.value.archivedTrips.filterNot { it.id == trip.id },
+                overallReviews = _state.value.overallReviews - trip.id,
+                selected = null,
+                reviews = emptyMap(),
+                members = emptyList(),
+            )
+        }
     }
 
     fun addItem(request: CreateItemRequest) {
         val trip = _state.value.selected ?: return
-        launch {
-            repository.addItem(trip.id, request)
-            detailCache.remove(trip.id)
-            val trips = repository.trips()
-            _state.value.copy(trips = trips, selected = trips.first { it.id == trip.id })
+        launchOperation("add-item-${trip.id}", retry = { addItem(request) }) {
+            val created = repository.addItem(trip.id, request)
+            updateSelectedItems { items -> (items + created).sortedBy(ItineraryItem::scheduledAt) }
         }
     }
 
     fun updateItem(itemId: String, request: CreateItemRequest) {
         val trip = _state.value.selected ?: return
-        launch {
-            repository.updateItem(itemId, request)
-            detailCache.remove(trip.id)
-            val trips = repository.trips()
-            _state.value.copy(trips = trips, selected = trips.first { it.id == trip.id })
+        launchOperation("update-item-$itemId", retry = { updateItem(itemId, request) }) {
+            val updated = repository.updateItem(itemId, request)
+            updateSelectedItems { items ->
+                items.map { if (it.id == itemId) updated else it }.sortedBy(ItineraryItem::scheduledAt)
+            }
         }
     }
 
     fun toggleNotification(item: ItineraryItem, enabled: Boolean) {
         val trip = _state.value.selected ?: return
-        launch {
-            repository.setNotification(item, enabled)
-            detailCache.remove(trip.id)
-            val trips = repository.trips()
-            _state.value.copy(trips = trips, selected = trips.first { it.id == trip.id })
+        launchOperation("notification-${item.id}", retry = { toggleNotification(item, enabled) }) {
+            val updated = repository.setNotification(item, enabled)
+            updateSelectedItems { items -> items.map { if (it.id == item.id) updated else it } }
         }
     }
 
@@ -198,7 +239,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         content: String,
         photoUris: List<Uri>,
         removedPhotoIds: Set<String>,
-    ) = launch {
+    ) = launchOperation("save-review-$itemId") {
         var review = repository.saveReview(itemId, rating, content)
         removedPhotoIds.forEach { photoId ->
             review = repository.deleteReviewPhoto(itemId, photoId)
@@ -229,7 +270,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun deleteReviewPhoto(itemId: String, photoId: String) = launch {
+    fun deleteReviewPhoto(itemId: String, photoId: String) = launchOperation("delete-photo-$photoId") {
         val review = repository.deleteReviewPhoto(itemId, photoId)
         _state.value.selected?.let { trip ->
             detailCache[trip.id]?.let { cached ->
@@ -243,7 +284,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveTripOverallReview(rating: Int, content: String, representativePhotoId: String?) {
         val trip = _state.value.selected ?: return
-        launch {
+        launchOperation("save-overall-review-${trip.id}") {
             val review = repository.saveTripOverallReview(trip.id, rating, content, representativePhotoId)
             detailCache[trip.id]?.let { cached -> detailCache[trip.id] = cached.copy(overallReview = review) }
             val reviews = _state.value.overallReviews + (trip.id to review)
@@ -251,8 +292,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadGoogleCalendars() = launch {
-        val calendars = calendarExporter.calendars()
+    fun loadGoogleCalendars() = launchOperation("calendar-load") {
+        val calendars = withContext(Dispatchers.IO) { calendarExporter.calendars() }
         _state.value.copy(
             googleCalendars = calendars,
             calendarExportMessage = if (calendars.isEmpty()) "기기에 연결된 Google 캘린더를 찾을 수 없습니다." else null,
@@ -261,8 +302,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun exportSelectedTripToCalendar(calendarId: Long) {
         val trip = _state.value.selected ?: return
-        launch {
-            val result = calendarExporter.export(trip, calendarId)
+        launchOperation("calendar-export") {
+            val result = withContext(Dispatchers.IO) { calendarExporter.export(trip, calendarId) }
             _state.value.copy(
                 calendarExportMessage = "Google 캘린더에 ${result.created}개를 추가하고 ${result.updated}개를 업데이트했습니다.",
             )
@@ -275,7 +316,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     fun invite(email: String) {
         val trip = _state.value.selected ?: return
-        launch {
+        launchOperation("invite-${trip.id}") {
             repository.invite(trip.id, email)
             val members = repository.members(trip.id)
             detailCache[trip.id]?.let { cached -> detailCache[trip.id] = cached.copy(members = members) }
@@ -283,27 +324,28 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun acceptInvitation(id: String) = launch {
+    fun acceptInvitation(id: String) = launchOperation("accept-invitation-$id") {
         repository.acceptInvitation(id)
         val home = loadHomeData()
         _state.value.copy(
             trips = home.trips,
+            archivedTrips = home.archivedTrips,
             overallReviews = home.overallReviews,
             invitations = home.invitations,
         )
     }
 
-    fun declineInvitation(id: String) = launch {
+    fun declineInvitation(id: String) = launchOperation("decline-invitation-$id") {
         repository.declineInvitation(id)
         _state.value.copy(invitations = repository.invitations())
     }
 
     fun registerDevice(token: String) {
         deviceToken = token
-        if (_state.value.authenticated) launch { repository.registerDevice(token); _state.value }
+        if (_state.value.authenticated) launchOperation("register-device") { repository.registerDevice(token); _state.value }
     }
 
-    private fun authenticate(request: suspend () -> AuthResponse) = launch {
+    private fun authenticate(request: suspend () -> AuthResponse) = launchOperation("authenticate", showGlobalLoading = true) {
         request()
         deviceToken?.let { repository.registerDevice(it) }
         val home = loadHomeData()
@@ -311,6 +353,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             authenticated = true,
             email = repository.email,
             trips = home.trips,
+            archivedTrips = home.archivedTrips,
             overallReviews = home.overallReviews,
             invitations = home.invitations,
         )
@@ -318,9 +361,101 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadHomeData(): HomeData = coroutineScope {
         val trips = async { repository.trips() }
+        val archivedTrips = async { repository.trips(archived = true) }
         val overallReviews = async { repository.getTripOverallReviews().associateBy(TripOverallReview::tripId) }
         val invitations = async { repository.invitations() }
-        HomeData(trips.await(), overallReviews.await(), invitations.await())
+        HomeData(trips.await(), archivedTrips.await(), overallReviews.await(), invitations.await())
+    }
+
+    fun dismissError() {
+        retryAction = null
+        _state.update { it.copy(error = null, errorCanRetry = false) }
+    }
+
+    fun retryLastRequest() {
+        val retry = retryAction ?: return
+        retryAction = null
+        _state.update { it.copy(error = null, errorCanRetry = false) }
+        retry()
+    }
+
+    private fun loadTripDetail(trip: Trip, refreshing: Boolean = false) {
+        viewModelScope.launch {
+            if (refreshing) {
+                _state.update {
+                    it.copy(
+                        refreshing = true,
+                        busyOperations = it.busyOperations + "trip-refresh-${trip.id}",
+                        error = null,
+                        errorCanRetry = false,
+                    )
+                }
+            }
+            runCatching { repository.tripDetail(trip.id) }
+                .onSuccess { detail ->
+                    retryAction = null
+                    detailCache[trip.id] = detail
+                    _state.update { current ->
+                        if (current.selected?.id != trip.id) {
+                            current.copy(
+                                refreshing = false,
+                                busyOperations = current.busyOperations - "trip-refresh-${trip.id}",
+                            )
+                        } else {
+                            val overallReviews = detail.overallReview
+                                ?.let { current.overallReviews + (trip.id to it) }
+                                ?: (current.overallReviews - trip.id)
+                            current.copy(
+                                selected = detail.trip,
+                                trips = current.trips.map { if (it.id == trip.id) detail.trip else it },
+                                archivedTrips = current.archivedTrips.map { if (it.id == trip.id) detail.trip else it },
+                                reviews = detail.reviews.associateBy(Review::itemId),
+                                overallReviews = overallReviews,
+                                members = detail.members,
+                                detailLoading = false,
+                                refreshing = false,
+                                busyOperations = current.busyOperations - "trip-refresh-${trip.id}",
+                                error = null,
+                                errorCanRetry = false,
+                            )
+                        }
+                    }
+                }
+                .onFailure { failure ->
+                    retryAction = { loadTripDetail(trip, refreshing = true) }
+                    _state.update { current ->
+                        current.copy(
+                            detailLoading = false,
+                            refreshing = false,
+                            busyOperations = current.busyOperations - "trip-refresh-${trip.id}",
+                            error = failure.message ?: "여행 상세 정보를 불러오지 못했습니다.",
+                            errorCanRetry = true,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun replaceTrip(updated: Trip): TripUiState {
+        val current = _state.value
+        detailCache[updated.id]?.let { detailCache[updated.id] = it.copy(trip = updated) }
+        return current.copy(
+            trips = current.trips.map { if (it.id == updated.id) updated else it },
+            archivedTrips = current.archivedTrips.map { if (it.id == updated.id) updated else it },
+            selected = current.selected?.let { if (it.id == updated.id) updated else it },
+        )
+    }
+
+    private fun updateSelectedItems(transform: (List<ItineraryItem>) -> List<ItineraryItem>): TripUiState {
+        val current = _state.value
+        val selected = current.selected ?: return current
+        val updated = selected.copy(items = transform(selected.items))
+        detailCache[selected.id]?.let { detailCache[selected.id] = it.copy(trip = updated) }
+        return current.copy(
+            selected = updated,
+            trips = current.trips.map { if (it.id == updated.id) updated else it },
+            archivedTrips = current.archivedTrips.map { if (it.id == updated.id) updated else it },
+        )
     }
 
     private fun readPhoto(uri: Uri): ReviewPhotoUpload {
@@ -347,12 +482,46 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         return ReviewPhotoUpload(fileName, contentType, bytes)
     }
 
-    private fun launch(block: suspend () -> TripUiState) {
+    private fun launchOperation(
+        key: String,
+        showGlobalLoading: Boolean = false,
+        refreshing: Boolean = false,
+        retry: (() -> Unit)? = null,
+        block: suspend () -> TripUiState,
+    ) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
-            _state.value = runCatching { block() }
-                .getOrElse { _state.value.copy(error = it.message ?: "요청에 실패했습니다.") }
-                .copy(loading = false)
+            _state.update {
+                it.copy(
+                    loading = if (showGlobalLoading) true else it.loading,
+                    refreshing = if (refreshing) true else it.refreshing,
+                    busyOperations = it.busyOperations + key,
+                    error = null,
+                    errorCanRetry = false,
+                )
+            }
+            runCatching { block() }
+                .onSuccess { next ->
+                    retryAction = null
+                    _state.value = next.copy(
+                        loading = if (showGlobalLoading) false else next.loading,
+                        refreshing = if (refreshing) false else next.refreshing,
+                        busyOperations = next.busyOperations - key,
+                        error = null,
+                        errorCanRetry = false,
+                    )
+                }
+                .onFailure { failure ->
+                    retryAction = retry
+                    _state.update {
+                        it.copy(
+                            loading = if (showGlobalLoading) false else it.loading,
+                            refreshing = if (refreshing) false else it.refreshing,
+                            busyOperations = it.busyOperations - key,
+                            error = failure.message ?: "요청에 실패했습니다.",
+                            errorCanRetry = retry != null,
+                        )
+                    }
+                }
         }
     }
 
