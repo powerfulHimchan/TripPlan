@@ -19,7 +19,7 @@ interface TripApi {
     suspend fun login(@Body request: EmailPasswordRequest): AuthResponse
 
     @GET("api/v1/trips")
-    suspend fun getTrips(@Query("archived") archived: Boolean = false): List<Trip>
+    suspend fun getTrips(): List<Trip>
 
     @GET("api/v1/trips/{tripId}/details")
     suspend fun getTripDetail(@Path("tripId") tripId: String): TripDetail
@@ -29,15 +29,6 @@ interface TripApi {
 
     @PATCH("api/v1/trips/{tripId}")
     suspend fun updateTrip(@Path("tripId") tripId: String, @Body request: CreateTripRequest): Trip
-
-    @POST("api/v1/trips/{tripId}/archive")
-    suspend fun archiveTrip(@Path("tripId") tripId: String)
-
-    @DELETE("api/v1/trips/{tripId}/archive")
-    suspend fun unarchiveTrip(@Path("tripId") tripId: String)
-
-    @DELETE("api/v1/trips/{tripId}")
-    suspend fun deleteTrip(@Path("tripId") tripId: String)
 
     @POST("api/v1/trips/{tripId}/items")
     suspend fun addItem(@Path("tripId") tripId: String, @Body request: CreateItemRequest): ItineraryItem

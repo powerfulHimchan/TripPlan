@@ -34,20 +34,6 @@ class Trip(
 }
 
 @Entity
-@Table(
-    name = "trip_archives",
-    uniqueConstraints = [UniqueConstraint(name = "uk_trip_archive", columnNames = ["trip_id", "user_id"])],
-)
-class TripArchive(
-    @Id val id: UUID = UUID.randomUUID(),
-    @Column(name = "trip_id", nullable = false) val tripId: UUID,
-    @Column(name = "user_id", nullable = false, length = 36) val userId: String,
-    @Column(name = "archived_at", nullable = false) val archivedAt: Instant = Instant.now(),
-) {
-    protected constructor() : this(tripId = UUID.randomUUID(), userId = "")
-}
-
-@Entity
 @Table(name = "itinerary_items")
 class ItineraryItem(
     @Id val id: UUID = UUID.randomUUID(),

@@ -12,7 +12,6 @@ import java.util.UUID
 class TripService(
     private val trips: TripRepository,
     private val items: ItineraryItemRepository,
-    private val archives: TripArchiveRepository,
     private val reviewCleanup: ReviewCleanupService,
 ) {
     @Transactional
@@ -22,27 +21,22 @@ class TripService(
         return trips.save(
             Trip(userId = userId, title = request.title.trim(), destination = request.destination.trim(),
                 startDate = request.startDate, endDate = request.endDate, timezone = request.timezone)
-        ).toResponse(emptyList(), userId, archived = false)
+        ).toResponse(emptyList(), userId)
     }
 
     @Transactional(readOnly = true)
-    fun list(userId: String, archived: Boolean = false): List<TripResponse> {
+    fun list(userId: String): List<TripResponse> {
         val accessibleTrips = trips.findAllAccessible(userId)
         if (accessibleTrips.isEmpty()) return emptyList()
-        val archivedIds = archives.findAllByUserIdAndTripIdIn(userId, accessibleTrips.map(Trip::id))
-            .mapTo(mutableSetOf(), TripArchive::tripId)
-        val visibleTrips = accessibleTrips.filter { (it.id in archivedIds) == archived }
-        if (visibleTrips.isEmpty()) return emptyList()
-        val itemsByTripId = items.findAllByTripIdInOrderByScheduledAt(visibleTrips.map(Trip::id))
+        val itemsByTripId = items.findAllByTripIdInOrderByScheduledAt(accessibleTrips.map(Trip::id))
             .groupBy(ItineraryItem::tripId)
-        return visibleTrips.map { trip -> trip.toResponse(itemsByTripId[trip.id].orEmpty(), userId, archived) }
+        return accessibleTrips.map { trip -> trip.toResponse(itemsByTripId[trip.id].orEmpty(), userId) }
     }
 
     @Transactional(readOnly = true)
     fun get(userId: String, tripId: UUID): TripResponse {
         val trip = accessibleTrip(userId, tripId)
-        val archived = archives.findByTripIdAndUserId(tripId, userId) != null
-        return trip.toResponse(items.findAllByTripIdOrderByScheduledAt(tripId), userId, archived)
+        return trip.toResponse(items.findAllByTripIdOrderByScheduledAt(tripId), userId)
     }
 
     @Transactional
@@ -63,28 +57,7 @@ class TripService(
         trip.endDate = request.endDate
         trip.timezone = request.timezone
         trip.updatedAt = java.time.Instant.now()
-        return trip.toResponse(tripItems, userId, archives.findByTripIdAndUserId(tripId, userId) != null)
-    }
-
-    @Transactional
-    fun archive(userId: String, tripId: UUID) {
-        accessibleTrip(userId, tripId)
-        if (archives.findByTripIdAndUserId(tripId, userId) == null) {
-            archives.save(TripArchive(tripId = tripId, userId = userId))
-        }
-    }
-
-    @Transactional
-    fun unarchive(userId: String, tripId: UUID) {
-        accessibleTrip(userId, tripId)
-        archives.findByTripIdAndUserId(tripId, userId)?.let(archives::delete)
-    }
-
-    @Transactional
-    fun delete(userId: String, tripId: UUID) {
-        val trip = ownedTrip(userId, tripId)
-        reviewCleanup.prepareTripDeletion(tripId)
-        trips.delete(trip)
+        return trip.toResponse(tripItems, userId)
     }
 
     @Transactional
@@ -175,10 +148,9 @@ class TripService(
         ) { "일정 시작과 종료 시각은 여행 기간 안이어야 합니다." }
     }
 
-    private fun Trip.toResponse(items: List<ItineraryItem>, requesterId: String, archived: Boolean) = TripResponse(
+    private fun Trip.toResponse(items: List<ItineraryItem>, requesterId: String) = TripResponse(
         id, title, destination, startDate, endDate, timezone, items.map { it.toResponse() },
         owner = userId == requesterId,
-        archived = archived,
     )
 
     private fun ItineraryItem.toResponse() = ItineraryItemResponse(

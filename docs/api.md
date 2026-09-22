@@ -52,16 +52,12 @@
 }
 ```
 
-## 여행 조회·수정·보관·삭제
+## 여행 조회·수정
 
-- `GET /api/v1/trips?archived=false`: 현재 여행 목록
-- `GET /api/v1/trips?archived=true`: 로그인한 사용자가 보관한 여행 목록
+- `GET /api/v1/trips`: 여행 목록
 - `PATCH /api/v1/trips/{tripId}`: 소유자가 제목, 목적지, 기간, 시간대 수정
-- `POST /api/v1/trips/{tripId}/archive`: 로그인한 사용자의 목록에서 보관
-- `DELETE /api/v1/trips/{tripId}/archive`: 보관 해제
-- `DELETE /api/v1/trips/{tripId}`: 소유자가 여행과 일정, 후기, 사진 삭제
 
-여행 기간을 수정할 때 기존 일정이 새 기간 밖에 있으면 요청이 거절됩니다. 보관 상태는 공유 회원마다 독립적으로 관리됩니다.
+여행 기간을 수정할 때 기존 일정이 새 기간 밖에 있으면 요청이 거절됩니다.
 
 ## 여행 전체 후기 목록
 
