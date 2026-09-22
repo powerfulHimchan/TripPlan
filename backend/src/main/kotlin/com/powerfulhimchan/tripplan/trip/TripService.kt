@@ -1,5 +1,6 @@
 package com.powerfulhimchan.tripplan.trip
 
+import com.powerfulhimchan.tripplan.review.ReviewCleanupService
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -11,6 +12,7 @@ import java.util.UUID
 class TripService(
     private val trips: TripRepository,
     private val items: ItineraryItemRepository,
+    private val reviewCleanup: ReviewCleanupService,
 ) {
     @Transactional
     fun create(userId: String, request: CreateTripRequest): TripResponse {
@@ -23,10 +25,13 @@ class TripService(
     }
 
     @Transactional(readOnly = true)
-    fun list(userId: String): List<TripResponse> =
-        trips.findAllAccessible(userId).map { trip ->
-            trip.toResponse(items.findAllByTripIdOrderByScheduledAt(trip.id))
-        }
+    fun list(userId: String): List<TripResponse> {
+        val accessibleTrips = trips.findAllAccessible(userId)
+        if (accessibleTrips.isEmpty()) return emptyList()
+        val itemsByTripId = items.findAllByTripIdInOrderByScheduledAt(accessibleTrips.map(Trip::id))
+            .groupBy(ItineraryItem::tripId)
+        return accessibleTrips.map { trip -> trip.toResponse(itemsByTripId[trip.id].orEmpty()) }
+    }
 
     @Transactional(readOnly = true)
     fun get(userId: String, tripId: UUID): TripResponse {
@@ -96,6 +101,7 @@ class TripService(
     fun deleteItem(userId: String, itemId: UUID) {
         val item = items.findById(itemId).orElseThrow { EntityNotFoundException("일정을 찾을 수 없습니다.") }
         accessibleTrip(userId, item.tripId)
+        reviewCleanup.prepareItemDeletion(itemId)
         items.delete(item)
     }
 

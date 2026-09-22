@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.io.ByteArrayResource
+import org.springframework.core.io.InputStreamResource
 import org.springframework.core.io.Resource
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
@@ -46,13 +46,13 @@ class S3ReviewPhotoStorage(
     }
 
     override fun load(storedName: String): Resource = try {
-        val bytes = s3.getObjectAsBytes(
+        val stream = s3.getObject(
             GetObjectRequest.builder()
                 .bucket(bucket)
                 .key(objectKey(storedName))
                 .build(),
-        ).asByteArray()
-        ByteArrayResource(bytes)
+        )
+        InputStreamResource(stream)
     } catch (e: NoSuchKeyException) {
         throw photoNotFound(e)
     } catch (e: S3Exception) {

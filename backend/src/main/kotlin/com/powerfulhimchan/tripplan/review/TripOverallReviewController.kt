@@ -28,3 +28,9 @@ class TripOverallReviewController(private val service: TripOverallReviewService)
             ?: ResponseEntity.noContent().build()
 }
 
+@RestController
+@RequestMapping("/api/v1/trips/overall-reviews")
+class TripOverallReviewListController(private val service: TripOverallReviewService) {
+    @GetMapping
+    fun getAll(@AuthenticationPrincipal jwt: Jwt) = service.getAll(jwt.subject)
+}

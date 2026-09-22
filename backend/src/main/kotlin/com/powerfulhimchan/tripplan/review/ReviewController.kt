@@ -2,6 +2,7 @@ package com.powerfulhimchan.tripplan.review
 
 import jakarta.validation.Valid
 import org.springframework.http.ContentDisposition
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -10,6 +11,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.util.UUID
 
 @RestController
@@ -39,6 +41,8 @@ class ReviewController(private val service: ReviewService) {
     ): ResponseEntity<org.springframework.core.io.Resource> {
         val photo = service.download(jwt.subject, itemId, photoId)
         return ResponseEntity.ok()
+            .cacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePrivate())
+            .eTag("\"$photoId\"")
             .contentType(MediaType.parseMediaType(photo.contentType))
             .contentLength(photo.sizeBytes)
             .header(

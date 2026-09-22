@@ -19,6 +19,7 @@ import java.time.ZoneOffset
 class ReviewServiceTest @Autowired constructor(
     private val tripService: TripService,
     private val reviewService: ReviewService,
+    private val photoDeletions: ReviewPhotoDeletionRepository,
 ) {
     @Test
     fun `각 계획에 서로 다른 후기를 저장한다`() {
@@ -146,5 +147,36 @@ class ReviewServiceTest @Autowired constructor(
 
         assertThat(review.rating).isEqualTo(4)
         assertThat(review.content).isEmpty()
+    }
+
+    @Test
+    fun `사진이 있는 일정을 삭제하면 객체 삭제 작업을 기록한다`() {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val trip = tripService.create(
+            "user-1",
+            CreateTripRequest("사진 정리 여행", "서울", today.minusDays(1), today.plusDays(1), "UTC"),
+        )
+        val item = tripService.addItem(
+            "user-1",
+            trip.id,
+            CreateItineraryItemRequest(
+                "지난 일정",
+                scheduledAt = Instant.now().minusSeconds(7_200),
+                endsAt = Instant.now().minusSeconds(3_600),
+            ),
+        )
+        reviewService.save("user-1", item.id, SaveReviewRequest(5, "사진 후기"))
+        reviewService.addPhotos(
+            "user-1",
+            item.id,
+            listOf(MockMultipartFile("files", "memory.jpg", "image/jpeg", "photo-data".toByteArray())),
+        )
+
+        tripService.deleteItem("user-1", item.id)
+
+        val deletions = photoDeletions.findAll()
+        assertThat(deletions).hasSize(1)
+        assertThat(deletions.first().storedName).isNotBlank()
+        assertThat(deletions.first().attempts).isZero()
     }
 }

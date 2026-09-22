@@ -52,6 +52,12 @@
 }
 ```
 
+## 여행 전체 후기 목록
+
+`GET /api/v1/trips/overall-reviews`
+
+여행 목록의 대표 사진과 전체 후기를 한 번에 조회합니다. 앱은 여행마다 후기를 반복 요청하지 않고 이 API를 사용합니다.
+
 ## 일정 추가
 
 `POST /api/v1/trips/{tripId}/items`

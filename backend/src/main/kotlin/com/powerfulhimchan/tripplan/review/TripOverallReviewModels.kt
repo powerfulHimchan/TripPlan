@@ -26,6 +26,7 @@ class TripOverallReview(
 
 interface TripOverallReviewRepository : org.springframework.data.jpa.repository.JpaRepository<TripOverallReview, UUID> {
     fun findByTripId(tripId: UUID): TripOverallReview?
+    fun findAllByTripIdIn(tripIds: Collection<UUID>): List<TripOverallReview>
 }
 
 data class SaveTripOverallReviewRequest(
@@ -50,4 +51,3 @@ data class TripOverallReviewResponse(
     val representativePhoto: RepresentativePhotoResponse?,
     val updatedAt: Instant,
 )
-
