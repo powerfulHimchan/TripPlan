@@ -209,35 +209,4 @@ class TripServiceTest @Autowired constructor(private val service: TripService) {
             .hasMessageContaining("여행 기간 밖")
     }
 
-    @Test
-    fun `여행을 보관하고 다시 복원한다`() {
-        val trip = service.create(
-            "owner-3",
-            CreateTripRequest("보관 여행", "제주", LocalDate.of(2027, 10, 1), LocalDate.of(2027, 10, 2), "Asia/Seoul"),
-        )
-
-        service.archive("owner-3", trip.id)
-
-        assertThat(service.list("owner-3")).isEmpty()
-        assertThat(service.list("owner-3", archived = true).single().id).isEqualTo(trip.id)
-
-        service.unarchive("owner-3", trip.id)
-
-        assertThat(service.list("owner-3").single().id).isEqualTo(trip.id)
-        assertThat(service.list("owner-3", archived = true)).isEmpty()
-    }
-
-    @Test
-    fun `소유자는 여행을 삭제한다`() {
-        val trip = service.create(
-            "owner-4",
-            CreateTripRequest("삭제 여행", "서울", LocalDate.of(2027, 11, 1), LocalDate.of(2027, 11, 2), "Asia/Seoul"),
-        )
-
-        service.delete("owner-4", trip.id)
-
-        assertThat(service.list("owner-4")).isEmpty()
-        assertThatThrownBy { service.get("owner-4", trip.id) }
-            .isInstanceOf(jakarta.persistence.EntityNotFoundException::class.java)
-    }
 }

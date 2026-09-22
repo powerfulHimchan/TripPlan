@@ -156,8 +156,7 @@ fun TripApp(viewModel: TripViewModel) {
                     viewModel::saveReview, viewModel::saveTripOverallReview,
                     viewModel::loadGoogleCalendars, viewModel::exportSelectedTripToCalendar,
                     viewModel::clearCalendarExportMessage, viewModel::invite,
-                    viewModel::updateSelectedTrip, viewModel::archiveSelectedTrip,
-                    viewModel::restoreSelectedTrip, viewModel::deleteSelectedTrip,
+                    viewModel::updateSelectedTrip,
                     viewModel::refreshSelectedTrip,
                 )
             }
@@ -411,11 +410,7 @@ private fun TripListScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     val activeTrips = state.trips.filter { tripProgress(it) != TripProgress.COMPLETED }
     val completedTrips = state.trips.filter { tripProgress(it) == TripProgress.COMPLETED }
-    val visibleTrips = when (selectedTab) {
-        0 -> activeTrips
-        1 -> completedTrips
-        else -> state.archivedTrips
-    }
+    val visibleTrips = if (selectedTab == 0) activeTrips else completedTrips
     Box(
         Modifier
             .fillMaxSize()
@@ -454,7 +449,7 @@ private fun TripListScreen(
                 onRefresh = onRefresh,
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
-            if (state.trips.isEmpty() && state.archivedTrips.isEmpty() && !state.refreshing) {
+            if (state.trips.isEmpty() && !state.refreshing) {
                 LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
@@ -486,7 +481,7 @@ private fun TripListScreen(
                 ) {
                     item {
                         Text("어디로 떠나볼까요?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Ink)
-                        Text("계획하고, 함께 담은 여행 ${state.trips.size + state.archivedTrips.size}개", color = Muted)
+                        Text("계획하고, 함께 담은 여행 ${state.trips.size}개", color = Muted)
                     }
                     item {
                         TabRow(
@@ -506,11 +501,6 @@ private fun TripListScreen(
                                 onClick = { selectedTab = 1 },
                                 text = { Text("지난 여행 ${completedTrips.size}", fontWeight = FontWeight.Bold) },
                             )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text("보관 ${state.archivedTrips.size}", fontWeight = FontWeight.Bold) },
-                            )
                         }
                     }
                     if (visibleTrips.isEmpty()) {
@@ -526,20 +516,12 @@ private fun TripListScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Text(
-                                        when (selectedTab) {
-                                            0 -> "예정되거나 진행 중인 여행이 없어요"
-                                            1 -> "아직 종료된 여행이 없어요"
-                                            else -> "보관한 여행이 없어요"
-                                        },
+                                        if (selectedTab == 0) "예정되거나 진행 중인 여행이 없어요" else "아직 종료된 여행이 없어요",
                                         fontWeight = FontWeight.Bold,
                                         color = Ink,
                                     )
                                     Text(
-                                        when (selectedTab) {
-                                            0 -> "새로운 여행을 계획해보세요."
-                                            1 -> "여행이 끝나면 이곳에서 다시 볼 수 있어요."
-                                            else -> "상세 화면의 설정에서 여행을 보관할 수 있어요."
-                                        },
+                                        if (selectedTab == 0) "새로운 여행을 계획해보세요." else "여행이 끝나면 이곳에서 다시 볼 수 있어요.",
                                         color = Muted,
                                     )
                                 }
@@ -737,9 +719,6 @@ private fun TripDetailScreen(
     onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
     onUpdateTrip: (CreateTripRequest) -> Unit,
-    onArchiveTrip: () -> Unit,
-    onRestoreTrip: () -> Unit,
-    onDeleteTrip: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -754,9 +733,6 @@ private fun TripDetailScreen(
             onClearCalendarMessage = onClearCalendarMessage,
             onInvite = onInvite,
             onUpdateTrip = onUpdateTrip,
-            onArchiveTrip = onArchiveTrip,
-            onRestoreTrip = onRestoreTrip,
-            onDeleteTrip = onDeleteTrip,
             onRefresh = onRefresh,
         )
         return
@@ -796,19 +772,19 @@ private fun TripDetailScreen(
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
                         TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
-                        TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
+                        if (trip.owner) {
+                            TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
+                        }
                     },
                 )
             },
             floatingActionButton = {
-                if (!trip.archived) {
                 ExtendedFloatingActionButton(
                     onClick = { showItem = true },
                     containerColor = Coral,
                     contentColor = Color.White,
                     shape = RoundedCornerShape(18.dp),
                 ) { Text("＋ 일정 추가", fontWeight = FontWeight.Bold) }
-                }
             },
         ) { padding ->
             PullToRefreshBox(
@@ -945,9 +921,6 @@ private fun TripDetailScreen(
         busy = state.busyOperations.any { it.contains("trip-${trip.id}") },
         onDismiss = { showSettings = false },
         onUpdate = { onUpdateTrip(it); showSettings = false },
-        onArchive = onArchiveTrip,
-        onRestore = onRestoreTrip,
-        onDelete = onDeleteTrip,
     )
 }
 
@@ -962,9 +935,6 @@ private fun CompletedTripAlbumScreen(
     onClearCalendarMessage: () -> Unit,
     onInvite: (String) -> Unit,
     onUpdateTrip: (CreateTripRequest) -> Unit,
-    onArchiveTrip: () -> Unit,
-    onRestoreTrip: () -> Unit,
-    onDeleteTrip: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     val trip = state.selected ?: return
@@ -1002,7 +972,9 @@ private fun CompletedTripAlbumScreen(
                     actions = {
                         CalendarExportAction(state, onLoadGoogleCalendars, onExportToCalendar, onClearCalendarMessage)
                         TextButton(onClick = { showSharing = true }) { Text("동행 ${state.members.size}", fontWeight = FontWeight.SemiBold) }
-                        TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
+                        if (trip.owner) {
+                            TextButton(onClick = { showSettings = true }) { Text("설정", fontWeight = FontWeight.SemiBold) }
+                        }
                     },
                 )
             },
@@ -1149,9 +1121,6 @@ private fun CompletedTripAlbumScreen(
         busy = state.busyOperations.any { it.contains("trip-${trip.id}") },
         onDismiss = { showSettings = false },
         onUpdate = { onUpdateTrip(it); showSettings = false },
-        onArchive = onArchiveTrip,
-        onRestore = onRestoreTrip,
-        onDelete = onDeleteTrip,
     )
 }
 
@@ -1817,15 +1786,11 @@ private fun TripSettingsDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onUpdate: (CreateTripRequest) -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     var title by remember(trip.id) { mutableStateOf(trip.title) }
     var destination by remember(trip.id) { mutableStateOf(trip.destination) }
     var start by remember(trip.id) { mutableStateOf(LocalDate.parse(trip.startDate)) }
     var end by remember(trip.id) { mutableStateOf(LocalDate.parse(trip.endDate)) }
-    var confirmDelete by remember(trip.id) { mutableStateOf(false) }
     val changed = title != trip.title || destination != trip.destination ||
         start.toString() != trip.startDate || end.toString() != trip.endDate
     val canSave = trip.owner && changed && title.isNotBlank() && destination.isNotBlank() && !end.isBefore(start) && !busy
@@ -1857,44 +1822,13 @@ private fun TripSettingsDialog(
                         if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         else Text("여행 정보 저장")
                     }
-                    HorizontalDivider(color = Border)
                 } else {
                     Text("여행 정보는 여행을 만든 사람만 수정할 수 있어요.", color = Muted)
-                }
-
-                OutlinedButton(
-                    onClick = if (trip.archived) onRestore else onArchive,
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (trip.archived) "여행 목록으로 되돌리기" else "여행 보관하기") }
-
-                if (trip.owner) {
-                    TextButton(
-                        onClick = { confirmDelete = true },
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("여행 영구 삭제", color = MaterialTheme.colorScheme.error) }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
     )
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            shape = RoundedCornerShape(18.dp),
-            title = { Text("여행을 삭제할까요?", fontWeight = FontWeight.ExtraBold) },
-            text = { Text("일정, 후기, 사진과 공유 정보가 모두 삭제되며 되돌릴 수 없습니다.", color = Muted) },
-            confirmButton = {
-                Button(
-                    onClick = { confirmDelete = false; onDelete() },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("삭제") }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("취소") } },
-        )
-    }
 }
 
 @Composable

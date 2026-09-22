@@ -27,7 +27,6 @@ data class TripUiState(
     val authenticated: Boolean = false,
     val email: String? = null,
     val trips: List<Trip> = emptyList(),
-    val archivedTrips: List<Trip> = emptyList(),
     val selected: Trip? = null,
     val reviews: Map<String, Review> = emptyMap(),
     val overallReviews: Map<String, TripOverallReview> = emptyMap(),
@@ -45,7 +44,6 @@ data class TripUiState(
 
 private data class HomeData(
     val trips: List<Trip>,
-    val archivedTrips: List<Trip>,
     val overallReviews: Map<String, TripOverallReview>,
     val invitations: List<Invitation>,
 )
@@ -99,7 +97,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             val home = loadHomeData()
             _state.value.copy(
                 trips = home.trips,
-                archivedTrips = home.archivedTrips,
                 overallReviews = home.overallReviews,
                 invitations = home.invitations,
                 authenticated = true,
@@ -154,56 +151,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         launchOperation("update-trip-${trip.id}", retry = { updateSelectedTrip(request) }) {
             val updated = repository.updateTrip(trip.id, request)
             replaceTrip(updated)
-        }
-    }
-
-    fun archiveSelectedTrip() {
-        val trip = _state.value.selected ?: return
-        launchOperation("archive-trip-${trip.id}", retry = ::archiveSelectedTrip) {
-            repository.archiveTrip(trip.id)
-            detailCache.remove(trip.id)
-            _state.value.copy(
-                trips = _state.value.trips.filterNot { it.id == trip.id },
-                archivedTrips = (_state.value.archivedTrips + trip.copy(archived = true))
-                    .distinctBy(Trip::id)
-                    .sortedByDescending(Trip::startDate),
-                selected = null,
-                reviews = emptyMap(),
-                members = emptyList(),
-            )
-        }
-    }
-
-    fun restoreSelectedTrip() {
-        val trip = _state.value.selected ?: return
-        launchOperation("restore-trip-${trip.id}", retry = ::restoreSelectedTrip) {
-            repository.unarchiveTrip(trip.id)
-            detailCache.remove(trip.id)
-            _state.value.copy(
-                archivedTrips = _state.value.archivedTrips.filterNot { it.id == trip.id },
-                trips = (_state.value.trips + trip.copy(archived = false))
-                    .distinctBy(Trip::id)
-                    .sortedBy(Trip::startDate),
-                selected = null,
-                reviews = emptyMap(),
-                members = emptyList(),
-            )
-        }
-    }
-
-    fun deleteSelectedTrip() {
-        val trip = _state.value.selected ?: return
-        launchOperation("delete-trip-${trip.id}") {
-            repository.deleteTrip(trip.id)
-            detailCache.remove(trip.id)
-            _state.value.copy(
-                trips = _state.value.trips.filterNot { it.id == trip.id },
-                archivedTrips = _state.value.archivedTrips.filterNot { it.id == trip.id },
-                overallReviews = _state.value.overallReviews - trip.id,
-                selected = null,
-                reviews = emptyMap(),
-                members = emptyList(),
-            )
         }
     }
 
@@ -329,7 +276,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val home = loadHomeData()
         _state.value.copy(
             trips = home.trips,
-            archivedTrips = home.archivedTrips,
             overallReviews = home.overallReviews,
             invitations = home.invitations,
         )
@@ -353,7 +299,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             authenticated = true,
             email = repository.email,
             trips = home.trips,
-            archivedTrips = home.archivedTrips,
             overallReviews = home.overallReviews,
             invitations = home.invitations,
         )
@@ -361,10 +306,9 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadHomeData(): HomeData = coroutineScope {
         val trips = async { repository.trips() }
-        val archivedTrips = async { repository.trips(archived = true) }
         val overallReviews = async { repository.getTripOverallReviews().associateBy(TripOverallReview::tripId) }
         val invitations = async { repository.invitations() }
-        HomeData(trips.await(), archivedTrips.await(), overallReviews.await(), invitations.await())
+        HomeData(trips.await(), overallReviews.await(), invitations.await())
     }
 
     fun dismissError() {
@@ -408,7 +352,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                             current.copy(
                                 selected = detail.trip,
                                 trips = current.trips.map { if (it.id == trip.id) detail.trip else it },
-                                archivedTrips = current.archivedTrips.map { if (it.id == trip.id) detail.trip else it },
                                 reviews = detail.reviews.associateBy(Review::itemId),
                                 overallReviews = overallReviews,
                                 members = detail.members,
@@ -441,7 +384,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         detailCache[updated.id]?.let { detailCache[updated.id] = it.copy(trip = updated) }
         return current.copy(
             trips = current.trips.map { if (it.id == updated.id) updated else it },
-            archivedTrips = current.archivedTrips.map { if (it.id == updated.id) updated else it },
             selected = current.selected?.let { if (it.id == updated.id) updated else it },
         )
     }
@@ -454,7 +396,6 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         return current.copy(
             selected = updated,
             trips = current.trips.map { if (it.id == updated.id) updated else it },
-            archivedTrips = current.archivedTrips.map { if (it.id == updated.id) updated else it },
         )
     }
 

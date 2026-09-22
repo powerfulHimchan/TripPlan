@@ -74,7 +74,6 @@ data class TripResponse(
     val timezone: String,
     val items: List<ItineraryItemResponse>,
     val owner: Boolean,
-    val archived: Boolean,
 )
 
 data class TripDetailResponse(

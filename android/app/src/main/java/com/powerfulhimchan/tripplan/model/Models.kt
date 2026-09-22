@@ -9,7 +9,6 @@ data class Trip(
     val timezone: String,
     val items: List<ItineraryItem> = emptyList(),
     val owner: Boolean = false,
-    val archived: Boolean = false,
 )
 
 data class ItineraryItem(
