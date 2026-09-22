@@ -174,9 +174,9 @@ class ReviewServiceTest @Autowired constructor(
 
         tripService.deleteItem("user-1", item.id)
 
-        assertThat(photoDeletions.findAll()).singleElement().satisfies { deletion ->
-            assertThat(deletion.storedName).isNotBlank()
-            assertThat(deletion.attempts).isZero()
-        }
+        val deletions = photoDeletions.findAll()
+        assertThat(deletions).hasSize(1)
+        assertThat(deletions.first().storedName).isNotBlank()
+        assertThat(deletions.first().attempts).isZero()
     }
 }
