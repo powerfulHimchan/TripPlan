@@ -113,7 +113,10 @@ class ReviewService(
     private fun validatePhoto(file: MultipartFile) {
         require(!file.isEmpty) { "빈 사진 파일은 등록할 수 없습니다." }
         require(file.size <= MAX_PHOTO_SIZE) { "사진 한 장은 최대 5MB까지 등록할 수 있습니다." }
-        require(file.contentType in ALLOWED_CONTENT_TYPES) { "JPG, PNG, WEBP, HEIC 사진만 등록할 수 있습니다." }
+        val contentType = file.contentType?.lowercase()
+        require(contentType != null && contentType in ALLOWED_CONTENT_TYPES) {
+            "JPG, PNG, WEBP, HEIC 사진만 등록할 수 있습니다."
+        }
     }
 
     private fun TripReview.toResponse(reviewPhotos: List<ReviewPhoto> = photos.findAllByReviewIdOrderByCreatedAt(id)) = ReviewResponse(
