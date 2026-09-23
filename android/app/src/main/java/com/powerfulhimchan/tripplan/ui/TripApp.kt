@@ -37,7 +37,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
@@ -79,17 +78,17 @@ import java.text.NumberFormat
 import java.util.Locale
 
 private val Teal = Color(0xFF26667F)
-private val Sky = Color(0xFFDFF6FC)
-private val PaleSky = Color(0xFFF2FAFC)
-private val FieldBackground = Color(0xFFF8FBFC)
-private val Coral = Color(0xFFFF7D6B)
-private val Leaf = Color(0xFF55A97B)
+private val Sky = Color(0xFFE7F3F6)
+private val PaleSky = Color(0xFFF5F9FA)
+private val FieldBackground = Color(0xFFF8FAFB)
+private val Coral = Color(0xFFC64F3D)
+private val Leaf = Color(0xFF3D8B5E)
 private val Ink = Color(0xFF20343D)
 private val Muted = Color(0xFF6A7F88)
-private val Border = Color(0xFFDCE8EC)
+private val Border = Color(0xFFD8E1E5)
 private val WonNumberFormat = NumberFormat.getNumberInstance(Locale.KOREA)
-private val RectangularShape = ComposeRoundedCornerShape(5.dp)
-private val RectangularSmallShape = ComposeRoundedCornerShape(3.dp)
+private val RectangularShape = ComposeRoundedCornerShape(4.dp)
+private val RectangularSmallShape = ComposeRoundedCornerShape(4.dp)
 
 // 기존 크기 호출을 낮은 반경의 사각형 토큰으로 제한해 모든 컨트롤의 모서리를 일관되게 유지한다.
 private fun RoundedCornerShape(size: Dp) = if (size <= 10.dp) RectangularSmallShape else RectangularShape
@@ -127,12 +126,17 @@ fun TripApp(viewModel: TripViewModel) {
             primary = Teal,
             onPrimary = Color.White,
             secondary = Coral,
+            onSecondary = Color.White,
             tertiary = Leaf,
+            onTertiary = Color.White,
             background = PaleSky,
+            onBackground = Ink,
             surface = Color.White,
             surfaceVariant = Sky,
             onSurface = Ink,
+            onSurfaceVariant = Muted,
             outline = Border,
+            error = Color(0xFFB3261E),
         ),
         shapes = Shapes(
             small = RectangularSmallShape,
@@ -185,7 +189,7 @@ private fun VersionCheckScreen() {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+            .background(PaleSky),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -202,7 +206,11 @@ private fun VersionCheckScreen() {
                 color = Teal,
             )
             Spacer(Modifier.height(20.dp))
-            CircularProgressIndicator(color = Coral, strokeWidth = 3.dp)
+            LinearProgressIndicator(
+                modifier = Modifier.width(120.dp).height(4.dp),
+                color = Coral,
+                trackColor = Sky,
+            )
             Spacer(Modifier.height(12.dp))
             Text("사용 가능한 버전을 확인하고 있어요", color = Muted)
         }
@@ -216,7 +224,7 @@ private fun ForceUpdateScreen(policy: AppVersionResponse) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+            .background(PaleSky),
     ) {
         Column(
             Modifier
@@ -235,7 +243,7 @@ private fun ForceUpdateScreen(policy: AppVersionResponse) {
             Card(
                 shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -309,7 +317,7 @@ private fun AuthScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Sky, Color(0xFFF4FBFD), Color.White))),
+            .background(PaleSky),
     ) {
         Column(
             Modifier
@@ -343,7 +351,7 @@ private fun AuthScreen(
             Card(
                 shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -352,33 +360,42 @@ private fun AuthScreen(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
-                    OutlinedTextField(
-                        email,
-                        { email = it },
-                        label = { Text("이메일 주소") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next,
-                            autoCorrectEnabled = false,
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = fieldColors,
-                    )
-                    OutlinedTextField(
-                        password, { password = it }, label = { Text("비밀번호 (8자 이상)") },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done,
-                            autoCorrectEnabled = false,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { submit() }),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = fieldColors,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("이메일 주소", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        OutlinedTextField(
+                            email,
+                            { email = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("name@example.com", color = Muted) },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Next,
+                                autoCorrectEnabled = false,
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = fieldColors,
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("비밀번호", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        OutlinedTextField(
+                            password,
+                            { password = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("8자 이상 입력", color = Muted) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done,
+                                autoCorrectEnabled = false,
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { submit() }),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = fieldColors,
+                        )
+                    }
                     Button(
                         onClick = submit,
                         enabled = !loading && email.isNotBlank() && password.length >= 8,
@@ -414,7 +431,7 @@ private fun TripListScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+            .background(PaleSky),
     ) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -537,7 +554,7 @@ private fun TripListScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         ) {
                             Box {
                                 coverPhoto?.let { photo ->
@@ -678,7 +695,7 @@ private fun InvitationDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = Color.White,
-        tonalElevation = 10.dp,
+        tonalElevation = 2.dp,
         title = { Text("받은 여행 초대", color = Teal, fontWeight = FontWeight.ExtraBold) },
         text = {
             if (invitations.isEmpty()) Text("대기 중인 초대가 없습니다.", color = Muted)
@@ -760,7 +777,7 @@ private fun TripDetailScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Sky, PaleSky, Color.White))),
+            .background(PaleSky),
     ) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -807,7 +824,7 @@ private fun TripDetailScreen(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(26.dp))
-                            .background(Brush.linearGradient(listOf(Teal, Color(0xFF3E8EA0))))
+                            .background(Teal)
                             .padding(22.dp),
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -836,7 +853,7 @@ private fun TripDetailScreen(
                 }
                 activeItem?.let { current ->
                     item(key = "active-${current.id}") {
-                        Surface(shape = RoundedCornerShape(20.dp), color = Coral, shadowElevation = 4.dp) {
+                        Surface(shape = RoundedCornerShape(20.dp), color = Coral, shadowElevation = 2.dp) {
                             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("지금 진행 중", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
@@ -960,7 +977,7 @@ private fun CompletedTripAlbumScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFFFFF1EE), PaleSky, Color.White))),
+            .background(Color(0xFFFFF8F6)),
     ) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -999,7 +1016,7 @@ private fun CompletedTripAlbumScreen(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(28.dp))
-                            .background(Brush.linearGradient(listOf(Coral, Color(0xFFFFA968))))
+                            .background(Coral)
                             .padding(22.dp),
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1422,7 +1439,11 @@ private fun CalendarExportAction(
     }
     val calendarBusy = state.busyOperations.any { it.startsWith("calendar-") }
     TextButton(onClick = openPicker, enabled = !calendarBusy) {
-        if (calendarBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        if (calendarBusy) LinearProgressIndicator(
+            modifier = Modifier.width(28.dp).height(3.dp),
+            color = Teal,
+            trackColor = Sky,
+        )
         else Text("내보내기", fontWeight = FontWeight.SemiBold)
     }
     if (showCalendars) {
@@ -1477,7 +1498,7 @@ private fun SharingDialog(members: List<TripMember>, canInvite: Boolean, onDismi
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = Color.White,
-        tonalElevation = 10.dp,
+        tonalElevation = 2.dp,
         title = { Text("함께 계획하는 사람", color = Teal, fontWeight = FontWeight.ExtraBold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1491,15 +1512,19 @@ private fun SharingDialog(members: List<TripMember>, canInvite: Boolean, onDismi
                 }
                 if (canInvite) {
                     HorizontalDivider(color = Border)
-                    OutlinedTextField(
-                        email,
-                        { email = it },
-                        label = { Text("가입된 회원 이메일") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = yeodamFieldColors(),
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("가입된 회원 이메일", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        OutlinedTextField(
+                            email,
+                            { email = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("name@example.com", color = Muted) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = yeodamFieldColors(),
+                        )
+                    }
                 }
             }
         },
@@ -1619,7 +1644,7 @@ private fun TimelineItemCard(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = category.containerColor),
             border = BorderStroke(if (progress == ScheduleProgress.IN_PROGRESS) 1.5.dp else 1.dp, if (progress == ScheduleProgress.IN_PROGRESS) Coral else Border),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 3.dp else 0.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (progress == ScheduleProgress.IN_PROGRESS) 2.dp else 0.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
@@ -1689,7 +1714,7 @@ private fun ItineraryCard(
             .clickable(enabled = progress == ScheduleProgress.UPCOMING, onClick = onEdit),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = category.containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(1.dp, Border.copy(alpha = 0.7f)),
     ) {
         Column {
@@ -1743,19 +1768,28 @@ private fun CategoryBadge(category: ItineraryCategoryStyle, compact: Boolean = f
 
 @Composable
 private fun DetailLoadingIndicator() {
+    val transition = rememberInfiniteTransition(label = "상세 로딩")
+    val alpha by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes { durationMillis = 900; 1f at 900 },
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "상세 로딩 투명도",
+    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color.White.copy(alpha = 0.9f),
+        color = Color.White,
         border = BorderStroke(1.dp, Border),
     ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp).graphicsLayer { this.alpha = alpha },
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Teal, strokeWidth = 2.dp)
-            Text("후기와 동행 정보를 불러오는 중이에요", color = Muted, style = MaterialTheme.typography.labelMedium)
+            Box(Modifier.fillMaxWidth(0.42f).height(12.dp).background(Border))
+            Box(Modifier.fillMaxWidth(0.78f).height(9.dp).background(Sky))
         }
     }
 }
@@ -1819,7 +1853,7 @@ private fun TripSettingsDialog(
                         enabled = canSave,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        if (busy) Text("저장 중…")
                         else Text("여행 정보 저장")
                     }
                 } else {
@@ -2327,7 +2361,7 @@ private fun InputDialog(title: String, onDismiss: () -> Unit, enabled: Boolean, 
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = Color.White,
-        tonalElevation = 10.dp,
+        tonalElevation = 2.dp,
         title = { Text(title, color = Teal, fontWeight = FontWeight.ExtraBold) },
         text = {
             Column(

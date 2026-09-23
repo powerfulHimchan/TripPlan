@@ -1,10 +1,9 @@
 <resources>
     <style name="Theme.TripPlan" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:colorAccent">#26667F</item>
-        <item name="android:navigationBarColor">#F6F8F7</item>
-        <item name="android:statusBarColor">#F6F8F7</item>
+        <item name="android:navigationBarColor">#F5F9FA</item>
+        <item name="android:statusBarColor">#F5F9FA</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
-
