@@ -16,8 +16,8 @@ android {
         applicationId = "com.powerfulhimchan.tripplan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.13.0"
+        versionCode = 15
+        versionName = "0.13.1"
         buildConfigField("String", "API_BASE_URL", "\"https://yeodam-api-production.up.railway.app/\"")
     }
 
@@ -56,4 +56,6 @@ dependencies {
 
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-messaging")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

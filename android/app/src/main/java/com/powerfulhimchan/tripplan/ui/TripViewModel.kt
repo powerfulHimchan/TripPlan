@@ -7,11 +7,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.powerfulhimchan.tripplan.BuildConfig
 import com.powerfulhimchan.tripplan.data.TokenStore
+import com.powerfulhimchan.tripplan.data.SessionExpiredException
 import com.powerfulhimchan.tripplan.data.ReviewPhotoUpload
 import com.powerfulhimchan.tripplan.data.TripRepository
 import com.powerfulhimchan.tripplan.data.GoogleCalendarExporter
 import com.powerfulhimchan.tripplan.model.*
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import retrofit2.HttpException
 
 data class TripUiState(
     val versionChecking: Boolean = false,
@@ -62,6 +65,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     private var deviceToken: String? = null
     private val detailCache = mutableMapOf<String, TripDetail>()
     private var retryAction: (() -> Unit)? = null
+    private var sessionGeneration = 0L
 
     init {
         checkAppVersion()
@@ -72,9 +76,22 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     fun register(email: String, password: String) = authenticate { repository.register(email, password) }
 
     fun logout() {
+        sessionGeneration++
         repository.logout()
         detailCache.clear()
+        retryAction = null
         _state.value = TripUiState()
+    }
+
+    private fun handleSessionFailure(failure: Throwable): Boolean {
+        if (failure !is SessionExpiredException) return false
+        // Ignore a delayed rejection from a session that has already been replaced.
+        if (repository.isCurrentSession(failure)) {
+            val requiredUpdate = _state.value.requiredUpdate
+            logout()
+            _state.value = TripUiState(requiredUpdate = requiredUpdate, error = failure.message)
+        }
+        return true
     }
 
     private fun checkAppVersion() {
@@ -325,6 +342,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadTripDetail(trip: Trip, refreshing: Boolean = false) {
         viewModelScope.launch {
+            val generation = sessionGeneration
             if (refreshing) {
                 _state.update {
                     it.copy(
@@ -337,6 +355,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             }
             runCatching { repository.tripDetail(trip.id) }
                 .onSuccess { detail ->
+                    if (generation != sessionGeneration) return@onSuccess
                     retryAction = null
                     detailCache[trip.id] = detail
                     _state.update { current ->
@@ -365,6 +384,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 .onFailure { failure ->
+                    if (failure is CancellationException) throw failure
+                    if (generation != sessionGeneration || handleSessionFailure(failure)) return@onFailure
                     retryAction = { loadTripDetail(trip, refreshing = true) }
                     _state.update { current ->
                         current.copy(
@@ -431,6 +452,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         block: suspend () -> TripUiState,
     ) {
         viewModelScope.launch {
+            val generation = sessionGeneration
             _state.update {
                 it.copy(
                     loading = if (showGlobalLoading) true else it.loading,
@@ -442,6 +464,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             }
             runCatching { block() }
                 .onSuccess { next ->
+                    if (generation != sessionGeneration) return@onSuccess
                     retryAction = null
                     _state.value = next.copy(
                         loading = if (showGlobalLoading) false else next.loading,
@@ -452,13 +475,17 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 .onFailure { failure ->
+                    if (failure is CancellationException) throw failure
+                    if (generation != sessionGeneration || handleSessionFailure(failure)) return@onFailure
                     retryAction = retry
                     _state.update {
                         it.copy(
                             loading = if (showGlobalLoading) false else it.loading,
                             refreshing = if (refreshing) false else it.refreshing,
                             busyOperations = it.busyOperations - key,
-                            error = failure.message ?: "요청에 실패했습니다.",
+                            error = if (key == "authenticate" && failure is HttpException && failure.code() == 401) {
+                                "이메일 또는 비밀번호를 확인해주세요."
+                            } else failure.message ?: "요청에 실패했습니다.",
                             errorCanRetry = retry != null,
                         )
                     }

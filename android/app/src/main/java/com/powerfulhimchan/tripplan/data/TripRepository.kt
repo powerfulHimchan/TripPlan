@@ -16,12 +16,7 @@ class TripRepository(private val tokenStore: TokenStore) {
     private val api: TripApi = Retrofit.Builder()
         .baseUrl(BuildConfig.API_BASE_URL)
         .client(OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val request = chain.request().newBuilder().apply {
-                    tokenStore.accessToken?.let { header("Authorization", "Bearer $it") }
-                }.build()
-                chain.proceed(request)
-            }
+            .addInterceptor(SessionAuthInterceptor { tokenStore.accessToken })
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             }).build())
@@ -30,6 +25,7 @@ class TripRepository(private val tokenStore: TokenStore) {
 
     val isLoggedIn get() = tokenStore.isLoggedIn
     val email get() = tokenStore.email
+    fun isCurrentSession(failure: SessionExpiredException) = failure.belongsTo(tokenStore.accessToken)
 
     suspend fun appVersion(currentVersionCode: Int) = api.getAndroidVersionPolicy(currentVersionCode)
     suspend fun register(email: String, password: String) = api.register(EmailPasswordRequest(email, password)).also(tokenStore::save)
