@@ -94,7 +94,18 @@ Railway가 제공하는 `PORT` 환경변수는 Spring Boot가 자동으로 사�
 
 ## 테스트
 
+로그인 토큰이 만료되거나 무효화되면 앱은 저장된 인증 정보를 지우고 재로그인을 안내합니다.
+공개 버전 조회와 로그인/회원가입에는 기존 토큰을 보내지 않습니다. 이전 앱에서 여행 조회·생성이
+모두 `401`로 실패할 때는 로그아웃 후 다시 로그인하세요. 서버와 DB 재시작은 필요하지 않습니다.
+
 ```bash
 cd backend
 gradle test
+```
+
+Android 인증 요청 분리 및 세션 오류 회귀 테스트:
+
+```bash
+cd android
+gradle :app:testDebugUnitTest :app:assembleDebug
 ```
